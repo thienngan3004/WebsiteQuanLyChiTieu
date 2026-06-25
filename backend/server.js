@@ -1,19 +1,23 @@
 const express = require('express');
-    const cors = require('cors');
-    require('dotenv').config();
+const cors = require('cors');
+require('dotenv').config();
 
-    const app = express();
-    const PORT = process.env.PORT || 5000;
+const authRoutes = require('./routes/authRoutes'); 
 
-    // Middleware
-    app.use(cors());
-    app.use(express.json()); // Đọc dữ liệu JSON từ request body
+const app = express();
+const PORT = process.env.PORT || 5000;
 
-    // Route kiểm tra môi trường
-    app.get('/', (req, res) => {
-        res.send('Trang web đang chạy ổn định...');
-    });
+// Middleware
+app.use(cors());
+app.use(express.json()); 
 
-    app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-    });
+// Cấu hình các tuyến đường API
+app.use('/api/auth', authRoutes); 
+
+app.get('/', (req, res) => {
+    res.send('Trang web đang chạy ổn định...');
+});
+
+app.listen(PORT, () => {
+    console.log(`Server đang chạy trên port ${PORT}`);
+});
