@@ -1,112 +1,385 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 
 function Transactions() {
-  // Mock dữ liệu lịch sử giao dịch từ ngày Thứ 3 để hiển thị lên bảng tĩnh
-  const mockTransactions = [
-    { id: 1, type: 'income', amount: 12000000, date: '2026-06-01', category: 'Thu nhập tiền lương cố định', description: 'Nhận lương tháng thực tập đầu tiên' },
-    { id: 2, type: 'expense', amount: 65000, date: '2026-06-02', category: 'Ăn uống hằng ngày', description: 'Mua cơm trưa văn phòng' },
-    { id: 3, type: 'expense', amount: 3200000, date: '2026-06-04', category: 'Mua sắm thiết bị học tập', description: 'Mua màn hình máy tính cũ' }
-  ];
-
-  // Trạng thái đóng/mở khung chat AI độc lập
+  // 1. Khởi tạo các State để quản lý dữ liệu thật từ Backend
+  const [transactions, setTransactions] = useState([]); // Mảng chứa danh sách giao dịch thật
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  // State quản lý các ô nhập liệu trong Form thêm mới
+  const [formData, setFormData] = useState({
+    amount: "",
+    type: "expense",
+    category_id: 1, // Tạm thời mặc định nhóm 1 (ví dụ: Ăn uống)
+    date: new Date().toISOString().split("T")[0], // Mặc định lấy ngày hôm nay
+    description: "",
+  });
+
+  const [categories, setCategories] = useState([]);
+  // State quản lý ô nhập khi tạo danh mục mới
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  // Hàm lấy danh mục thật từ DB về
+  const fetchCategories = async () => {
+    try {
+      const token = localStorage.getItem("token"); // Lấy token thật
+      const response = await axios.get("http://localhost:5000/api/categories", {
+        headers: { Authorization: `Bearer ${token}` } // <-- Đính kèm token gác cổng
+      });
+      setCategories(response.data);
+    } catch (error) {
+      console.error("Lỗi tải danh mục:", error);
+    }
+  };
+
+// Chỉnh sửa lại useEffect để khi vào trang nó tải cả Giao dịch và Danh mục luôn
+useEffect(() => {
+  fetchTransactions();
+  fetchCategories(); // <-- Gọi hàm này
+}, []);
+  // 2. Hàm gọi API lấy danh sách giao dịch từ Backend (Read trong CRUD)
+  const fetchTransactions = async () => {
+    try {
+      const response = await axios.get(
+        "http://localhost:5000/api/transactions"
+      );
+      setTransactions(response.data); // Đổ dữ liệu thật vào state để render ra bảng
+    } catch (error) {
+      console.error("Lỗi lấy danh sách giao dịch:", error);
+      alert("Không thể tải danh sách giao dịch!");
+    }
+  };
+
+  // Tự động chạy hàm fetchTransactions ngay khi người dùng vừa truy cập vào trang
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  // 3. Hàm xử lý thay đổi dữ liệu khi gõ vào các ô Input của Form
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    if (name === "type") {
+      const firstValidCategory = categories.find(cat => cat.type === value);
+      setFormData({
+        ...formData,
+        type: value,
+        category_id: firstValidCategory ? firstValidCategory.id : ""
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value,
+      });
+    }
+  };
+
+  // 4. Hàm xử lý gửi dữ liệu Form lên Backend để lưu vào DB (Create trong CRUD)
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!formData.amount || !formData.date) {
+      alert("Vui lòng nhập đầy đủ số tiền và ngày giao dịch!");
+      return;
+    }
+
+    if (!formData.category_id || Number(formData.category_id) === 0) {
+      alert("Ní ơi! Vui lòng tạo nhanh một danh mục ở ô phía dưới trước đã nhé!");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(
+        "http://localhost:5000/api/transactions",
+        {
+          amount: Number(formData.amount),
+          type: formData.type,
+          category_id: Number(formData.category_id),
+          date: formData.date,
+          description: formData.description
+          // 💡 ĐÃ XÓA dòng user_id: Nếu ní đã cài middleware cho route transactions của ngày Thứ 5
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` } // <-- Đính kèm token
+        }
+      );
+
+      if (response.data.success) {
+        alert("Thêm giao dịch thành công!");
+        setFormData({
+          amount: "",
+          type: formData.type,
+          category_id: formData.category_id,
+          date: new Date().toISOString().split("T")[0],
+          description: "",
+        });
+        fetchTransactions();
+      }
+    } catch (error) {
+      console.error("Lỗi thêm giao dịch:", error);
+      alert("Lỗi hệ thống, không lưu được giao dịch!");
+    }
+  };
+
+  // Hàm xử lý tạo danh mục động mới từ giao diện
+  const handleCreateCategory = async (e) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) {
+      alert("Ní chưa nhập tên danh mục kìa!");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(
+        "http://localhost:5000/api/categories", 
+        {
+          name: newCategoryName,
+          type: formData.type // Tự động lấy theo loại Thu hoặc Chi đang chọn trên Form
+          // 💡 ĐÃ XÓA dòng user_id: Backend giờ tự bóc từ Token ra rồi ní nhé!
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` } // <-- Đính kèm token
+        }
+      );
+
+      if (response.data.success) {
+        alert(`Đã thêm danh mục "${newCategoryName}" thành công!`);
+        setNewCategoryName(""); 
+        await fetchCategories(); // Tải lại danh sách danh mục mới
+      }
+    } catch (error) {
+      console.error("Lỗi tạo danh mục:", error);
+      alert("Không thể tạo danh mục mới.");
+    }
+  };
+
+  // 5. Hàm xóa giao dịch thật (Delete trong CRUD)
+  const handleDelete = async (id) => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa giao dịch này không?")) {
+      try {
+        const response = await axios.delete(
+          `http://localhost:5000/api/transactions/${id}`
+        );
+        if (response.data.success) {
+          alert("Đã xóa giao dịch thành công!");
+          fetchTransactions(); // Cập nhật lại giao diện bảng
+        }
+      } catch (error) {
+        console.error("Lỗi xóa giao dịch:", error);
+        alert("Không thể xóa giao dịch này!");
+      }
+    }
+  };
 
   return (
     <div style={styles.container}>
       <h2 style={styles.pageTitle}>Quản Lý Giao Dịch Tài Chính</h2>
-      <p style={styles.subtitle}>Thêm mới các khoản thu/chi và theo dõi lịch sử dòng tiền</p>
 
       <div style={styles.mainLayout}>
         {/* BLOCK 1: FORM THÊM GIAO DỊCH MỚI */}
         <div style={styles.card}>
           <h4 style={styles.cardTitle}>Thêm Giao Dịch Mới</h4>
-          <form onSubmit={(e) => e.preventDefault()} style={styles.form}>
+          <form onSubmit={handleSubmit} style={styles.form}>
             <div style={styles.inputGroup}>
               <label style={styles.label}>Số tiền (VND)</label>
-              <input type="number" placeholder="Ví dụ: 50000" style={styles.input} />
+              <input
+                type="number"
+                name="amount"
+                value={formData.amount}
+                onChange={handleInputChange}
+                placeholder="Ví dụ: 50000"
+                style={styles.input}
+              />
             </div>
             <div style={styles.inputGroup}>
               <label style={styles.label}>Loại giao dịch</label>
-              <select style={styles.input}>
+              <select
+                name="type"
+                value={formData.type}
+                onChange={handleInputChange}
+                style={styles.input}
+              >
                 <option value="expense">Chi tiêu (Expense)</option>
                 <option value="income">Thu nhập (Income)</option>
               </select>
             </div>
             <div style={styles.inputGroup}>
               <label style={styles.label}>Danh mục</label>
-              <select style={styles.input}>
-                <option>Ăn uống hằng ngày</option>
-                <option>Mua sắm thiết bị học tập</option>
-                <option>Di chuyển</option>
+              <select 
+                name="category_id" 
+                value={formData.category_id} 
+                onChange={handleInputChange} 
+                style={styles.input}
+              >
+                {categories.filter((cat) => cat.type === formData.type).length === 0 ? (
+                  <option value={0}>-- Vui lòng tạo danh mục mới ở dưới --</option>
+                ) : (
+                  categories
+                    .filter((cat) => cat.type === formData.type)
+                    .map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))
+                )}
               </select>
+            </div>
+
+            {/* === GIAO THỨC THÊM DANH MỤC ĐỘNG MỚI (THÊM ĐOẠN NÀY VÀO DƯỚI Ô SELECT) === */}
+            <div style={{ ...styles.inputGroup, marginTop: "5px", padding: "10px", background: "#f8fafc", borderRadius: "4px", border: "1px dashed #cbd5e1" }}>
+              <label style={{ ...styles.label, fontSize: "12px", color: "#64748b" }}>💡 Tạo nhanh danh mục mới cho loại này:</label>
+              <div style={{ display: "flex", gap: "8px", marginTop: "5px" }}>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Quỹ riêng, Học phí..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  style={{ ...styles.input, flex: 1, padding: "6px 10px", fontSize: "13px" }}
+                />
+                <button 
+                  type="button" 
+                  onClick={handleCreateCategory}
+                  style={{ padding: "6px 12px", backgroundColor: "#10b981", color: "#fff", border: "none", borderRadius: "4px", fontWeight: "bold", fontSize: "13px", cursor: "pointer" }}
+                >
+                  + Thêm
+                </button>
+              </div>
             </div>
             <div style={styles.inputGroup}>
               <label style={styles.label}>Ngày giao dịch</label>
-              <input type="date" style={styles.input} />
+              <input
+                type="date"
+                name="date"
+                value={formData.date}
+                onChange={handleInputChange}
+                style={styles.input}
+              />
             </div>
             <div style={styles.inputGroup}>
               <label style={styles.label}>Ghi chú</label>
-              <input type="text" placeholder="Nhập mô tả chi tiết..." style={styles.input} />
+              <input
+                type="text"
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                placeholder="Nhập mô tả chi tiết..."
+                style={styles.input}
+              />
             </div>
-            <button type="button" style={styles.btnSubmit}>Lưu Giao Dịch</button>
+            <button type="submit" style={styles.btnSubmit}>
+              Lưu Giao Dịch Vào DB
+            </button>
           </form>
         </div>
 
-        {/* BLOCK 2: BẢNG LỊCH SỬ GIAO DỊCH */}
+        {/* BLOCK 2: BẢNG LỊCH SỬ GIAO DỊCH THẬT */}
         <div style={{ ...styles.card, flex: 2 }}>
-          <h4 style={styles.cardTitle}>Lịch Sử Giao Dịch</h4>
+          <h4 style={styles.cardTitle}>
+            Lịch Sử Giao Dịch Thật ({transactions.length})
+          </h4>
           <table style={styles.table}>
             <thead>
-              <tr style={styles.thRow}>
-                <th style={styles.th}>Ngày</th>
-                <th style={styles.th}>Danh mục</th>
-                <th style={styles.th}>Loại</th>
-                <th style={styles.th}>Số tiền</th>
-                <th style={styles.th}>Ghi chú</th>
-              </tr>
+            <tr style={styles.thRow}>
+              <th style={styles.th}>Ngày</th>
+              <th style={styles.th}>Danh mục</th> {/* <-- Thêm dòng này */}
+              <th style={styles.th}>Loại</th>
+              <th style={styles.th}>Số tiền</th>
+              <th style={styles.th}>Ghi chú</th>
+              <th style={styles.th}>Hành động</th>
+            </tr>
             </thead>
             <tbody>
-              {mockTransactions.map((item) => (
-                <tr key={item.id} style={styles.tr}>
-                  <td style={styles.td}>{item.date}</td>
-                  <td style={styles.td}>{item.category}</td>
-                  <td style={styles.td}>
-                    <span style={{
-                      ...styles.badge,
-                      backgroundColor: item.type === 'income' ? '#e6f4ea' : '#fce8e6',
-                      color: item.type === 'income' ? '#137333' : '#c5221f'
-                    }}>
-                      {item.type === 'income' ? 'Thu nhập' : 'Chi tiêu'}
-                    </span>
+              {transactions.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="5"
+                    style={{
+                      textAlign: "center",
+                      padding: "20px",
+                      color: "#64748b",
+                    }}
+                  >
+                    Chưa có giao dịch! Hãy thêm mới ở form bên cạnh nhé.
                   </td>
-                  <td style={{ ...styles.td, fontWeight: 'bold', color: item.type === 'income' ? '#137333' : '#c5221f' }}>
-                    {item.type === 'income' ? '+' : '-'}{item.amount.toLocaleString()} đ
-                  </td>
-                  <td style={styles.td}>{item.description}</td>
                 </tr>
-              ))}
+              ) : (
+                transactions.map((item) => (
+                  <tr key={item.id} style={styles.tr}>
+                    <td style={styles.td}>
+                      {item.date ? item.date.split("T")[0] : ""}
+                    </td>
+                    <td style={styles.td}>
+                      {item.category_name || "Chưa phân loại"}
+                    </td>
+                    <td style={styles.td}>
+                      <span
+                        style={{
+                          ...styles.badge,
+                          backgroundColor:
+                            item.type === "income" ? "#e6f4ea" : "#fce8e6",
+                          color: item.type === "income" ? "#137333" : "#c5221f",
+                        }}
+                      >
+                        {item.type === "income" ? "Thu nhập" : "Chi tiêu"}
+                      </span>
+                    </td>
+                    <td
+                      style={{
+                        ...styles.td,
+                        fontWeight: "bold",
+                        color: item.type === "income" ? "#137333" : "#c5221f",
+                      }}
+                    >
+                      {item.type === "income" ? "+" : "-"}
+                      {Number(item.amount).toLocaleString()} đ
+                    </td>
+                    <td style={styles.td}>{item.description}</td>
+                    <td style={styles.td}>
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#ef4444",
+                          cursor: "pointer",
+                          fontWeight: "600",
+                        }}
+                      >
+                        Xóa
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* BLOCK 3: KHUNG CHATBOT TRỢ LÝ ẢO AI CỐ ĐỊNH GÓC PHẢI */}
+      {/* BLOCK 3: KHUNG CHATBOT TRỢ LÝ ẢO AI */}
       <div style={styles.chatBotWrapper}>
-        {/* Nút tròn để bấm mở/đóng chat */}
-        <button onClick={() => setIsChatOpen(!isChatOpen)} style={styles.chatButton}>
-          {isChatOpen ? '✖' : '💬 Trợ lý AI'}
+        <button
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          style={styles.chatButton}
+        >
+          {isChatOpen ? "✖" : "💬 Trợ lý AI"}
         </button>
-
-        {/* Cửa sổ chat hiển thị khi trạng thái isChatOpen = true */}
         {isChatOpen && (
           <div style={styles.chatWindow}>
             <div style={styles.chatHeader}>🤖 Trợ Lý Tài Chính AI</div>
             <div style={styles.chatBody}>
-              <div style={styles.msgAi}>Xin chào! Tôi là cố vấn tài chính thông minh của bạn. Bạn cần tôi phân tích khoản chi tiêu nào hôm nay?</div>
-              <div style={styles.msgUser}>Tháng này tôi đã tiêu bao nhiêu tiền vào mua sắm rồi?</div>
+              <div style={styles.msgAi}>
+                Xin chào! Tôi là cố vấn tài chính thông minh của bạn.
+              </div>
             </div>
             <div style={styles.chatFooter}>
-              <input type="text" placeholder="Hỏi AI về chi tiêu..." style={styles.chatInput} />
+              <input
+                type="text"
+                placeholder="Hỏi AI về chi tiêu..."
+                style={styles.chatInput}
+              />
               <button style={styles.btnSend}>Gửi</button>
             </div>
           </div>
@@ -116,37 +389,148 @@ function Transactions() {
   );
 }
 
-// Hệ thống CSS layout gọn gàng, chia tỉ lệ grid/flex và cố định chatbot góc phải
+// Giữ nguyên bộ styles cũ của ní ở dưới...
 const styles = {
-  container: { padding: '30px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'Arial, sans-serif', position: 'relative' },
-  pageTitle: { margin: '0 0 5px 0', fontSize: '26px', color: '#0f172a' },
-  subtitle: { margin: '0 0 30px 0', fontSize: '14px', color: '#64748b' },
-  mainLayout: { display: 'flex', gap: '30px', flexWrap: 'wrap' },
-  card: { background: '#fff', padding: '25px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', flex: 1, minWidth: '320px' },
-  cardTitle: { margin: '0 0 20px 0', fontSize: '18px', color: '#1e293b', fontWeight: 'bold' },
-  form: { display: 'flex', flexDirection: 'column', gap: '15px' },
-  inputGroup: { display: 'flex', flexDirection: 'column', gap: '6px' },
-  label: { fontSize: '14px', fontWeight: '500', color: '#475569' },
-  input: { padding: '10px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '14px' },
-  btnSubmit: { padding: '12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' },
-  table: { width: '100%', borderCollapse: 'collapse', textAlign: 'left' },
-  thRow: { backgroundColor: '#f1f5f9' },
-  th: { padding: '12px', fontSize: '14px', color: '#475569', fontWeight: 'bold' },
-  tr: { borderBottom: '1px solid #e2e8f0' },
-  td: { padding: '12px', fontSize: '14px', color: '#334155' },
-  badge: { padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: '500' },
-  
-  // Style cho Chatbot AI cố định góc phải màn hình
-  chatBotWrapper: { position: 'fixed', bottom: '30px', right: '30px', zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px' },
-  chatButton: { padding: '15px 20px', backgroundColor: '#7c3aed', color: '#fff', border: 'none', borderRadius: '50px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' },
-  chatWindow: { width: '320px', height: '400px', backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 6px 20px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' },
-  chatHeader: { padding: '15px', backgroundColor: '#7c3aed', color: '#fff', fontWeight: 'bold', fontSize: '15px' },
-  chatBody: { padding: '15px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', backgroundColor: '#f8fafc' },
-  msgAi: { padding: '10px', backgroundColor: '#e0e7ff', color: '#3730a3', borderRadius: '12px 12px 12px 0px', fontSize: '13px', maxWidth: '85%', alignSelf: 'flex-start', lineHeight: '1.4' },
-  msgUser: { padding: '10px', backgroundColor: '#7c3aed', color: '#fff', borderRadius: '12px 12px 0px 12px', fontSize: '13px', maxWidth: '85%', alignSelf: 'flex-end', lineHeight: '1.4' },
-  chatFooter: { padding: '10px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: '8px' },
-  chatInput: { flex: 1, padding: '8px 12px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' },
-  btnSend: { padding: '8px 15px', backgroundColor: '#7c3aed', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }
+  container: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "24px",
+    background: "#f5f7fb",
+    minHeight: "calc(100vh - 64px)",
+    fontFamily: "Arial, sans-serif",
+  },
+  pageTitle: { margin: "0 0 5px 0", fontSize: "26px", color: "#0f172a" },
+  subtitle: { margin: "0 0 30px 0", fontSize: "14px", color: "#64748b" },
+  mainLayout: { display: "flex", gap: "30px", flexWrap: "wrap" },
+  card: {
+    background: "#fff",
+    padding: "25px",
+    borderRadius: "8px",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+    flex: 1,
+    minWidth: "320px",
+  },
+  cardTitle: {
+    margin: "0 0 20px 0",
+    fontSize: "18px",
+    color: "#1e293b",
+    fontWeight: "bold",
+  },
+  form: { display: "flex", flexDirection: "column", gap: "15px" },
+  inputGroup: { display: "flex", flexDirection: "column", gap: "6px" },
+  label: { fontSize: "14px", fontWeight: "500", color: "#475569" },
+  input: {
+    padding: "10px",
+    borderRadius: "4px",
+    border: "1px solid #cbd5e1",
+    fontSize: "14px",
+  },
+  btnSubmit: {
+    padding: "12px",
+    backgroundColor: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: "4px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    marginTop: "10px",
+  },
+  table: { width: "100%", borderCollapse: "collapse", textAlign: "left" },
+  thRow: { backgroundColor: "#f1f5f9" },
+  th: {
+    padding: "12px",
+    fontSize: "14px",
+    color: "#475569",
+    fontWeight: "bold",
+  },
+  tr: { borderBottom: "1px solid #e2e8f0" },
+  td: { padding: "12px", fontSize: "14px", color: "#334155" },
+  badge: {
+    padding: "4px 8px",
+    borderRadius: "12px",
+    fontSize: "12px",
+    fontWeight: "500",
+  },
+  chatBotWrapper: {
+    position: "fixed",
+    bottom: "30px",
+    right: "30px",
+    zIndex: 1000,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "10px",
+  },
+  chatButton: {
+    padding: "15px 20px",
+    backgroundColor: "#7c3aed",
+    color: "#fff",
+    border: "none",
+    borderRadius: "50px",
+    fontSize: "15px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(124,58,237,0.3)",
+  },
+  chatWindow: {
+    width: "320px",
+    height: "400px",
+    backgroundColor: "#fff",
+    borderRadius: "12px",
+    boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    border: "1px solid #e2e8f0",
+  },
+  chatHeader: {
+    padding: "15px",
+    backgroundColor: "#7c3aed",
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: "15px",
+  },
+  chatBody: {
+    padding: "15px",
+    flex: 1,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    backgroundColor: "#f8fafc",
+  },
+  msgAi: {
+    padding: "10px",
+    backgroundColor: "#e0e7ff",
+    color: "#3730a3",
+    borderRadius: "12px 12px 12px 0px",
+    fontSize: "13px",
+    maxWidth: "85%",
+    alignSelf: "flex-start",
+    lineHeight: "1.4",
+  },
+  chatFooter: {
+    padding: "10px",
+    borderTop: "1px solid #e2e8f0",
+    display: "flex",
+    gap: "8px",
+  },
+  chatInput: {
+    flex: 1,
+    padding: "8px 12px",
+    borderRadius: "4px",
+    border: "1px solid #cbd5e1",
+    fontSize: "13px",
+  },
+  btnSend: {
+    padding: "8px 15px",
+    backgroundColor: "#7c3aed",
+    color: "#fff",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
 };
 
 export default Transactions;
