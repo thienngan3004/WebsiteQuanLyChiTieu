@@ -246,33 +246,13 @@ export default function Dashboard() {
             <h3>{currentBalance.toLocaleString()}</h3>
             <p>Số dư hiện tại</p>
           </div>
-          <div
-            style={{
-              ...styles.statCard,
-              background: "#fef08a",
-              color: "#854d0e",
-            }}
-          >
-            <h3>{totalInvestment.toLocaleString()}</h3>
-            <p>Tổng số tiền đầu tư</p>
-          </div>
-          <div
-            style={{
-              ...styles.statCard,
-              background: "#fbcfe8",
-              color: "#9d174d",
-            }}
-          >
-            <h3>{totalBorrow.toLocaleString()}</h3>
-            <p>Tổng số tiền đi vay</p>
-          </div>
         </div>
 
         {/* KHỐI GRID CHỨA BẢNG ĐIỀU KHIỂN & CÁC BIỂU ĐỒ */}
         <div style={styles.dashboardGrid}>
           {/* Ô BẢNG ĐIỀU KHIỂN BỘ LỌC (NĂM / THÁNG) */}
           <div style={styles.card}>
-            <h4 style={styles.cardTitle}>⚙️ Bảng điều khiển</h4>
+            <h4 style={styles.cardTitle}>Bảng điều khiển</h4>
 
             <div style={styles.filterSection}>
               <p style={styles.filterTitle}>Năm</p>
@@ -328,7 +308,7 @@ export default function Dashboard() {
           {/* BIỂU ĐỒ ĐƯỜNG XU HƯỚNG CHI TIÊU */}
           <div style={{ ...styles.card, flex: 2 }}>
             <h4 style={styles.cardTitle}>
-              📈 Biểu đồ thể hiện chi tiêu theo danh mục
+            Biểu đồ thể hiện thu chi theo danh mục
             </h4>
             <div style={styles.chartHolder}>
               <Line
@@ -340,7 +320,7 @@ export default function Dashboard() {
 
           {/* BIỂU ĐỒ TRÒN KHOẢN THU */}
           <div style={styles.card}>
-            <h4 style={styles.cardTitle}>🍩 Khoản thu theo Danh mục</h4>
+            <h4 style={styles.cardTitle}>Khoản thu theo Danh mục</h4>
             <div style={styles.chartHolder}>
               <Pie data={pieChartData} />
             </div>
@@ -348,7 +328,7 @@ export default function Dashboard() {
 
           {/* BIỂU ĐỒ TRÒN KHOẢN chi */}
           <div style={styles.card}>
-            <h4 style={styles.cardTitle}>🍩 Khoản chi theo Danh mục</h4>
+            <h4 style={styles.cardTitle}>Khoản chi theo Danh mục</h4>
             <div style={styles.chartHolder}>
               <Pie data={expensePieChartData} />
             </div>
@@ -356,7 +336,7 @@ export default function Dashboard() {
 
           {/* BIỂU ĐỒ CỘT SO SÁNH TỔNG QUAN */}
           <div style={{ ...styles.card, flex: 1.5 }}>
-            <h4 style={styles.cardTitle}>📊 Cân đối Thu nhập & Chi tiêu</h4>
+            <h4 style={styles.cardTitle}>Cân đối Thu nhập & Chi tiêu</h4>
             <div style={styles.chartHolder}>
               <Bar
                 data={barChartData}
