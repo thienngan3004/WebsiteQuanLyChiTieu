@@ -15,7 +15,7 @@ exports.register = async (req, res) => {
     try {
         const [existingUser] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
         if (existingUser.length > 0) {
-            return res.status(400).json({ error: "Email này đã được sử dụng rồi ní ơi!" });
+            return res.status(400).json({ error: "Email này đã được sử dụng!" });
         }
 
         const salt = await bcrypt.genSalt(10);
@@ -51,12 +51,12 @@ exports.login = async (req, res) => {
         return res.status(401).json({ error: "Tài khoản email này không tồn tại!" });
       }
   
-      const user = rows[0]; // Biến user được định nghĩa ở đây nè ní!
+      const user = rows[0]; // Biến user được định nghĩa ở đây!
   
       // 2. So sánh mật khẩu
       const isMatch = await bcrypt.compare(password, user.password_hash);
       if (!isMatch) {
-        return res.status(401).json({ error: "Mật khẩu không chính xác kìa ní!" });
+        return res.status(401).json({ error: "Mật khẩu không chính xác!" });
       }
   
       // 3. Ký Token JWT (Đặt đúng chỗ này mới có biến user để dùng)

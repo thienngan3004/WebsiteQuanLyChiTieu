@@ -5,6 +5,7 @@ require('dotenv').config();
 const transactionRoutes = require('./routes/transaction');
 const categoryRoutes = require('./routes/categoryRoutes');
 const authRoutes = require('./routes/authRoutes'); 
+const budgetRoutes = require('./routes/budgetRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes); 
 app.use("/api/transactions", require("./routes/transaction"));
 app.use('/api/categories', categoryRoutes);
+app.use('/api/budgets', budgetRoutes);
 
 app.get('/', (req, res) => {
     res.send('Trang web đang chạy ổn định...');

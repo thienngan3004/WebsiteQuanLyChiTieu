@@ -79,7 +79,7 @@ export default function Dashboard() {
     .reduce((sum, t) => sum + Number(t.amount), 0);
 
   // Giả lập các nhóm danh mục bổ sung giống mẫu (Đầu tư, Đi vay, Cho vay, Tiết kiệm)
-  // Nếu DB của ní có danh mục này thì nó tự động tính thật
+  // Nếu DB có danh mục này thì nó tự động tính thật
   const totalInvestment = filteredTransactions
     .filter((t) => t.category_name?.toLowerCase().includes("đầu tư"))
     .reduce((sum, t) => sum + Number(t.amount), 0);
@@ -176,12 +176,12 @@ export default function Dashboard() {
             ? Object.values(expenseCategoryTotals)
             : [1],
         backgroundColor: [
-          "#ef4444", // Đỏ đậm (Cực kỳ cảnh báo cho Chi tiêu)
-          "#f97316", // Cam rực
-          "#facc15", // Vàng chanh
-          "#a855f7", // Tím mộng mơ
-          "#ec4899", // Hồng cánh sen
-          "#6366f1", // Xanh chàm (Indigo - không lo bị lẫn với xanh lục/xanh lá)
+          "#ef4444", 
+          "#f97316", 
+          "#facc15", 
+          "#a855f7", 
+          "#ec4899", 
+          "#6366f1", 
         ],
       },
     ],
@@ -203,7 +203,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div style={styles.loading}>
-        Đang thiết lập không gian tài chính cho ní...
+        Đang thiết lập không gian tài chính...
       </div>
     );
   }
