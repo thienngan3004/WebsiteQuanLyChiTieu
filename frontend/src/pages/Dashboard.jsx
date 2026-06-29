@@ -32,6 +32,67 @@ export default function Dashboard() {
   const [selectedYear, setSelectedYear] = useState("2026");
   const [selectedMonth, setSelectedMonth] = useState("Tất cả");
 
+  const [isOpenBudgetModal, setIsOpenBudgetModal] = useState(false);
+  const [budgetFormData, setBudgetFormData] = useState({
+    category_id: "",
+    amount: "",
+  });
+
+  const [categories, setCategories] = useState([]);
+
+  const fetchCategories = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get("http://localhost:5000/api/categories", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = response.data.data || response.data;
+      if (Array.isArray(data)) {
+        setCategories(data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy danh mục tại Dashboard:", error);
+    }
+  };
+
+  const handleCreateBudget = async (e) => {
+    e.preventDefault();
+    if (!budgetFormData.category_id || !budgetFormData.amount) {
+      alert("Vui lòng nhập đầy đủ thông tin!");
+      return;
+    }
+    try {
+      const token = localStorage.getItem("token");
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+
+      await axios.post(
+        "http://localhost:5000/api/budgets",
+        {
+          category_id: parseInt(budgetFormData.category_id),
+          amount: parseFloat(budgetFormData.amount),
+          month: currentMonth,
+          year: currentYear,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      alert("Đặt hạn mức thành công!");
+      setIsOpenBudgetModal(false);
+      setBudgetFormData({ category_id: "", amount: "" });
+      fetchBudgetWarnings();
+    } catch (error) {
+      console.error("Lỗi tạo ngân sách:", error);
+      alert(error.response?.data?.message || "Có lỗi xảy ra khi đặt hạn mức.");
+    }
+  };
+
+  useEffect(() => {
+    fetchBudgetWarnings();
+    fetchCategories();
+  }, []);
   useEffect(() => {
     const fetchRealData = async () => {
       try {
@@ -51,6 +112,29 @@ export default function Dashboard() {
     };
     fetchRealData();
   }, []);
+
+  const [budgetWarnings, setBudgetWarnings] = useState([]);
+
+  const fetchBudgetWarnings = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get(
+        "http://localhost:5000/api/budgets/check-warnings",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (response.data.success) {
+        setBudgetWarnings(response.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy cảnh báo ngân sách:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchBudgetWarnings();
+  }, [transactions]);
 
   // ==========================================
   // LOGIC BỘ LỌC NĂM & THÁNG (BẢNG ĐIỀU KHIỂN)
@@ -176,17 +260,16 @@ export default function Dashboard() {
             ? Object.values(expenseCategoryTotals)
             : [1],
         backgroundColor: [
-          "#ef4444", 
-          "#f97316", 
-          "#facc15", 
-          "#a855f7", 
-          "#ec4899", 
-          "#6366f1", 
+          "#ef4444",
+          "#f97316",
+          "#facc15",
+          "#a855f7",
+          "#ec4899",
+          "#6366f1",
         ],
       },
     ],
   };
-
 
   // 3. Biểu đồ Cột dọc: So sánh nhanh Thu - Chi - Số dư
   const barChartData = {
@@ -202,16 +285,12 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div style={styles.loading}>
-        Đang thiết lập không gian tài chính...
-      </div>
+      <div style={styles.loading}>Đang thiết lập không gian tài chính...</div>
     );
   }
 
   return (
     <div style={styles.dashboardContainer}>
-
-
       {/* 2. KHU VỰC NỘI DUNG CHÍNH (CONTENT AREA) */}
       <div style={styles.mainContent}>
         {/* HÀNG CARD BÁO CÁO SỐ LIỆU ĐA MÀU SẮC PHÍA TRÊN */}
@@ -224,7 +303,7 @@ export default function Dashboard() {
             }}
           >
             <h3>{totalExpense.toLocaleString()}</h3>
-            <p>Tổng số tiền đã chi (âm)</p>
+            <p>Tổng số tiền đã chi</p>
           </div>
           <div
             style={{
@@ -248,7 +327,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KHỐI GRID CHỨA BẢNG ĐIỀU KHIỂN & CÁC BIỂU ĐỒ */}
+        {/* KHỐI GRID CHỨA BẢNG ĐIỀU KHIỂN & CÁ C BIỂU ĐỒ */}
         <div style={styles.dashboardGrid}>
           {/* Ô BẢNG ĐIỀU KHIỂN BỘ LỌC (NĂM / THÁNG) */}
           <div style={styles.card}>
@@ -308,7 +387,7 @@ export default function Dashboard() {
           {/* BIỂU ĐỒ ĐƯỜNG XU HƯỚNG CHI TIÊU */}
           <div style={{ ...styles.card, flex: 2 }}>
             <h4 style={styles.cardTitle}>
-            Biểu đồ thể hiện thu chi theo danh mục
+              Biểu đồ thể hiện thu chi theo danh mục
             </h4>
             <div style={styles.chartHolder}>
               <Line
@@ -345,6 +424,339 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* KHU VỰC GIÁM SÁT NGÂN SÁCH DANH MỤC */}
+        <div
+          style={{
+            padding: "20px",
+            background: "#fff",
+            borderRadius: "8px",
+            marginTop: "20px",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+          }}
+        >
+          {/* Căn chỉnh Tiêu đề và Nút Đặt hạn mức nằm cùng 1 hàng ngang */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div>
+              <h4 style={{ margin: 0, color: "#374151" }}>
+                ⚠️ Giám sát Ngân sách Danh mục
+              </h4>
+              <p
+                style={{
+                  fontSize: "13px",
+                  color: "#6b7280",
+                  margin: "5px 0 0 0",
+                }}
+              >
+                Chỉ hiển thị các danh mục mà bạn đã thiết lập hạn mức chi tiêu.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsOpenBudgetModal(true)}
+              style={{
+                padding: "8px 12px",
+                background: "#3b82f6",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "13px",
+              }}
+            >
+              ⚙️ Đặt hạn mức
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "15px",
+              marginTop: "15px",
+            }}
+          >
+            {budgetWarnings.length === 0 ? (
+              <p style={{ color: "#9ca3af", fontStyle: "italic", margin: 0 }}>
+                Bạn chưa thiết lập hạn mức chi tiêu cho danh mục nào trong tháng
+                này.
+              </p>
+            ) : (
+              budgetWarnings.map((budget) => {
+                const percentage = budget.spent_percentage;
+
+                let statusText = "";
+                let statusColor = "#10b981";
+                let borderColor = "#e5e7eb";
+                let bgColor = "#f9fafb";
+
+                if (percentage > 100) {
+                  statusText = "🚨 (ĐÃ VƯỢT HẠN MỨC!)";
+                  statusColor = "#b91c1c";
+                  borderColor = "#b91c1c";
+                  bgColor = "#fef2f2";
+                } else if (percentage >= 85 && percentage <= 100) {
+                  statusText = "⚠️ (SẮP CHẠM HẠN MỨC!)";
+                  statusColor = "#d97706";
+                  borderColor = "#f59e0b";
+                  bgColor = "#fffbeb";
+                }
+
+                return (
+                  <div
+                    key={budget.budget_id}
+                    style={{
+                      padding: "15px",
+                      borderRadius: "6px",
+                      border: `2px solid ${borderColor}`,
+                      background: bgColor,
+                      transition: "all 0.3s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: statusColor,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        {budget.category_name} {statusText}
+                        <button
+                          onClick={() => {
+                            setBudgetFormData({
+                              category_id: budget.category_id,
+                              amount: budget.budget_limit,
+                            });
+                            setIsOpenBudgetModal(true);
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            backgroundColor:
+                              percentage > 100
+                                ? "#fca5a5"
+                                : percentage >= 85
+                                ? "#fde68a"
+                                : "#cbd5e1",
+                            color: "#1f2937",
+                            transition: "all 0.2s",
+                          }}
+                          title="Sửa hạn mức"
+                        >
+                        Chỉnh sửa hạn mức
+                        </button>
+                      </span>
+
+                      <span style={{ color: "#4b5563" }}>
+                        {Number(budget.total_spent).toLocaleString("vi-VN")}đ /{" "}
+                        {Number(budget.budget_limit).toLocaleString("vi-VN")}đ
+                      </span>
+                    </div>
+                    {/* Thanh tiến độ UI */}
+                    <div
+                      style={{
+                        width: "100%",
+                        background: "#e5e7eb",
+                        height: "10px",
+                        borderRadius: "5px",
+                        marginTop: "8px",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${Math.min(percentage, 100)}%`,
+                          background:
+                            percentage > 100
+                              ? "#b91c1c"
+                              : percentage >= 85
+                              ? "#f59e0b"
+                              : "#10b981",
+                          height: "100%",
+                          transition: "width 0.3s ease",
+                        }}
+                      />
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        marginTop: "5px",
+                        marginBottom: 0,
+                        color: statusColor,
+                      }}
+                    >
+                      Đã chi tiêu: <strong>{Math.round(percentage)}%</strong>{" "}
+                      ngân sách.
+                    </p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* POPUP MODAL TỰ ĐỘNG BUNG RA KHI ẤN ĐẶT HẠN MỨC */}
+        {isOpenBudgetModal && (
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              zIndex: 9999,
+            }}
+          >
+            <div
+              style={{
+                background: "#fff",
+                padding: "25px",
+                borderRadius: "8px",
+                width: "350px",
+                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+              }}
+            >
+              <h3 style={{ marginTop: 0, marginBottom: "15px" }}>
+                📅 Đặt Hạn Mức Tháng {new Date().getMonth() + 1}
+              </h3>
+
+              <form onSubmit={handleCreateBudget}>
+                {/* Dropdown Chọn danh mục */}
+                <div style={{ marginBottom: "15px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "5px",
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                      textAlign: "left",
+                    }}
+                  >
+                    Danh mục:
+                  </label>
+                  <select
+                    value={budgetFormData.category_id}
+                    onChange={(e) =>
+                      setBudgetFormData({
+                        ...budgetFormData,
+                        category_id: e.target.value,
+                      })
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "8px",
+                      borderRadius: "4px",
+                      border: "1px solid #ccc",
+                    }}
+                  >
+                    <option value="">-- Chọn danh mục chi tiêu --</option>
+                    {/* Render động danh sách danh mục từ biến categories truyền sang */}
+                    {typeof categories !== "undefined" &&
+                      categories
+                        .filter((c) => c.type === "expense")
+                        .map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
+                  </select>
+                </div>
+
+                {/* Ô Nhập số tiền */}
+                <div style={{ marginBottom: "20px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "5px",
+                      fontWeight: "bold",
+                      fontSize: "14px",
+                      textAlign: "left",
+                    }}
+                  >
+                    Hạn mức (VND):
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="Ví dụ: 1000000"
+                    value={budgetFormData.amount}
+                    onChange={(e) =>
+                      setBudgetFormData({
+                        ...budgetFormData,
+                        amount: e.target.value,
+                      })
+                    }
+                    style={{
+                      width: "93%",
+                      padding: "8px",
+                      borderRadius: "4px",
+                      border: "1px solid #ccc",
+                    }}
+                  />
+                </div>
+
+                {/* Cụm nút hành động */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "10px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setIsOpenBudgetModal(false)}
+                    style={{
+                      padding: "8px 12px",
+                      background: "#e5e7eb",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    style={{
+                      padding: "8px 12px",
+                      background: "#3b82f6",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Lưu lại
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

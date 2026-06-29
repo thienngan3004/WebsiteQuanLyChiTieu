@@ -104,4 +104,46 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/budgets/check-warnings - Lấy danh sách các danh mục CÓ đặt ngân sách và tính toán % đã tiêu
+router.get("/check-warnings", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Lấy tháng và năm hiện tại để tính toán dữ liệu thời gian thực
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+
+    // SQL: Chỉ lấy những danh mục được cấu hình trong bảng budgets, sau đó cộng dồn các giao dịch 'expense' tương ứng
+    const query = `
+      SELECT 
+        b.id AS budget_id,
+        b.category_id,
+        c.name AS category_name,
+        b.amount AS budget_limit,
+        COALESCE(SUM(t.amount), 0) AS total_spent,
+        ROUND((COALESCE(SUM(t.amount), 0) / b.amount) * 100, 2) AS spent_percentage
+      FROM budgets b
+      INNER JOIN categories c ON b.category_id = c.id
+      LEFT JOIN transactions t ON b.category_id = t.category_id 
+        AND t.user_id = b.user_id 
+        AND t.type = 'expense'
+        AND MONTH(t.date) = ? 
+        AND YEAR(t.date) = ?
+      WHERE b.user_id = ? AND b.month = ? AND b.year = ?
+      GROUP BY b.id, b.category_id, c.name, b.amount
+    `;
+
+    let rows;
+    if (typeof db.execute === "function") {
+      [rows] = await db.execute(query, [currentMonth, currentYear, userId, currentMonth, currentYear]);
+    } else {
+      [rows] = await db.query(query, [currentMonth, currentYear, userId, currentMonth, currentYear]);
+    }
+
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Lỗi GET /api/budgets/check-warnings:", error);
+    return res.status(500).json({ message: "Lỗi hệ thống.", error: error.message });
+  }
+});
+
 module.exports = router;

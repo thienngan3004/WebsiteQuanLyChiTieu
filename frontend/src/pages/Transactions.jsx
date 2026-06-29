@@ -24,7 +24,7 @@ function Transactions() {
     try {
       const token = localStorage.getItem("token"); // Lấy token thật
       const response = await axios.get("http://localhost:5000/api/categories", {
-        headers: { Authorization: `Bearer ${token}` } // <-- Đính kèm token gác cổng
+        headers: { Authorization: `Bearer ${token}` }, // <-- Đính kèm token gác cổng
       });
       setCategories(response.data);
     } catch (error) {
@@ -32,11 +32,11 @@ function Transactions() {
     }
   };
 
-// Chỉnh sửa lại useEffect để khi vào trang nó tải cả Giao dịch và Danh mục luôn
-useEffect(() => {
-  fetchTransactions();
-  fetchCategories(); // <-- Gọi hàm này
-}, []);
+  // Chỉnh sửa lại useEffect để khi vào trang nó tải cả Giao dịch và Danh mục luôn
+  useEffect(() => {
+    fetchTransactions();
+    fetchCategories(); // <-- Gọi hàm này
+  }, []);
   // 2. Hàm gọi API lấy danh sách giao dịch từ Backend (Read trong CRUD)
   const fetchTransactions = async () => {
     try {
@@ -58,13 +58,13 @@ useEffect(() => {
   // 3. Hàm xử lý thay đổi dữ liệu khi gõ vào các ô Input của Form
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    
+
     if (name === "type") {
-      const firstValidCategory = categories.find(cat => cat.type === value);
+      const firstValidCategory = categories.find((cat) => cat.type === value);
       setFormData({
         ...formData,
         type: value,
-        category_id: firstValidCategory ? firstValidCategory.id : ""
+        category_id: firstValidCategory ? firstValidCategory.id : "",
       });
     } else {
       setFormData({
@@ -84,7 +84,7 @@ useEffect(() => {
     }
 
     if (!formData.category_id || Number(formData.category_id) === 0) {
-      alert("Ní ơi! Vui lòng tạo nhanh một danh mục ở ô phía dưới trước đã nhé!");
+      alert(" Vui lòng tạo nhanh một danh mục ở ô phía dưới trước!");
       return;
     }
 
@@ -97,10 +97,10 @@ useEffect(() => {
           type: formData.type,
           category_id: Number(formData.category_id),
           date: formData.date,
-          description: formData.description
+          description: formData.description,
         },
         {
-          headers: { Authorization: `Bearer ${token}` } // <-- Đính kèm token
+          headers: { Authorization: `Bearer ${token}` }, // <-- Đính kèm token
         }
       );
 
@@ -128,42 +128,45 @@ useEffect(() => {
       alert("Vui lòng nhập tên danh mục!");
       return;
     }
-  
+
     try {
       const token = localStorage.getItem("token");
       if (!token) {
         alert("Không tìm thấy mã đăng nhập (Token), vui lòng đăng nhập lại!");
         return;
       }
-  
+
       // 2. Lấy CHÍNH XÁC type từ formData của form đang chọn ('expense' hoặc 'income')
-      const currentType = formData.type; 
-      
+      const currentType = formData.type;
+
       console.log("=== BẮT ĐẦU GỬI API ===");
-      console.log("Dữ liệu gửi đi:", { name: newCategoryName.trim(), type: currentType });
-  
+      console.log("Dữ liệu gửi đi:", {
+        name: newCategoryName.trim(),
+        type: currentType,
+      });
+
       // 3. Gọi API POST thực sự
       const response = await axios.post(
         "http://127.0.0.1:5000/api/categories",
         {
           name: newCategoryName.trim(),
-          type: currentType, 
+          type: currentType,
         },
         {
-          headers: { 
+          headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
           },
         }
       );
-  
+
       console.log("Phản hồi từ Backend:", response);
-  
+
       // 4. Kiểm tra mã trạng thái 201 từ Backend mới của tụi mình
       if (response.status === 201 || response.data?.category) {
         alert(`Đã thêm danh mục "${newCategoryName}" thành công!`);
         setNewCategoryName(""); // Xóa rỗng ô input
-        
+
         // 5. Gọi hàm fetch lại danh sách danh mục để dropdown cập nhật
         // Ní check xem ở trên ní định nghĩa hàm lấy danh mục tên là gì (fetchCategories hoặc getCategories...)
         if (typeof fetchCategories === "function") {
@@ -174,7 +177,8 @@ useEffect(() => {
       }
     } catch (error) {
       console.error("Lỗi chí mạng khi gọi API POST:", error);
-      const errorMsg = error.response?.data?.message || "Không thể kết nối đến máy chủ.";
+      const errorMsg =
+        error.response?.data?.message || "Không thể kết nối đến máy chủ.";
       alert(`Lỗi: ${errorMsg}`);
     }
   };
@@ -197,6 +201,71 @@ useEffect(() => {
     }
   };
 
+  // 1. Các State quản lý ẩn/hiện Popup và dữ liệu Form ngân sách
+  const [isOpenBudgetModal, setIsOpenBudgetModal] = useState(false);
+  const [budgetWarnings, setBudgetWarnings] = useState([]);
+  const [budgetFormData, setBudgetFormData] = useState({
+    category_id: "",
+    amount: ""
+  });
+
+  // 2. Hàm lấy danh sách cảnh báo ngân sách từ Backend
+  const fetchBudgetWarnings = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get("http://localhost:5000/api/budgets/check-warnings", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.data.success) {
+        setBudgetWarnings(response.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy cảnh báo ngân sách:", error);
+    }
+  };
+
+  // 3. Hàm gửi dữ liệu POST lên API khi bấm Lưu hạn mức
+  const handleCreateBudget = async (e) => {
+    e.preventDefault();
+    if (!budgetFormData.category_id || !budgetFormData.amount) {
+      alert("Vui lòng nhập đầy đủ thông tin!");
+      return;
+    }
+    try {
+      const token = localStorage.getItem("token");
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+
+      await axios.post("http://localhost:5000/api/budgets", {
+        category_id: parseInt(budgetFormData.category_id),
+        amount: parseFloat(budgetFormData.amount),
+        month: currentMonth,
+        year: currentYear
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      alert("Đặt hạn mức thành công!");
+      setIsOpenBudgetModal(false); 
+      setBudgetFormData({ category_id: "", amount: "" }); 
+      fetchBudgetWarnings(); 
+    } catch (error) {
+      console.error("Lỗi tạo ngân sách:", error);
+      alert(error.response?.data?.message || "Có lỗi xảy ra khi đặt hạn mức.");
+    }
+  };
+
+  // 4. Kích hoạt gọi cả 2 hàm khi vừa tải trang Dashboard
+  useEffect(() => {
+    fetchBudgetWarnings();
+    fetchCategories(); // 🌟 Chạy hàm này để nạp dữ liệu cho select option
+  }, []);
+
+  // 4. Tự động chạy lấy dữ liệu khi người dùng vừa mở màn hình Dashboard
+  useEffect(() => {
+    fetchBudgetWarnings();
+  }, []);
+
   return (
     <div style={styles.container}>
       <h2 style={styles.pageTitle}>Quản Lý Giao Dịch Tài Chính</h2>
@@ -206,7 +275,6 @@ useEffect(() => {
         <div style={styles.card}>
           <h4 style={styles.cardTitle}>Thêm Giao Dịch Mới</h4>
           <form onSubmit={handleSubmit} style={styles.form}>
-            
             {/* Số tiền */}
             <div style={styles.inputGroup}>
               <label style={styles.label}>Số tiền (VND)</label>
@@ -229,7 +297,11 @@ useEffect(() => {
                 onChange={(e) => {
                   handleInputChange(e);
                   // 🔑 BƯỚC QUAN TRỌNG: Khi đổi loại, reset ngay category_id về rỗng để tránh gửi nhầm ID khóa ngoại loại cũ
-                  setFormData(prev => ({ ...prev, type: e.target.value, category_id: "" }));
+                  setFormData((prev) => ({
+                    ...prev,
+                    type: e.target.value,
+                    category_id: "",
+                  }));
                 }}
                 style={styles.input}
               >
@@ -241,10 +313,12 @@ useEffect(() => {
             {/* Danh mục */}
             <div style={styles.inputGroup}>
               <label style={styles.label}>Danh mục</label>
-              <select 
-                name="category_id" 
-                value={formData.category_id || ""} 
-                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })} 
+              <select
+                name="category_id"
+                value={formData.category_id || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, category_id: e.target.value })
+                }
                 style={styles.input}
               >
                 <option value="">-- Chọn danh mục --</option>
@@ -254,26 +328,52 @@ useEffect(() => {
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
                     </option>
-                  ))
-                }
+                  ))}
               </select>
             </div>
 
             {/* Tạo nhanh danh mục mới */}
-            <div style={{ ...styles.inputGroup, marginTop: "5px", padding: "10px", background: "#f8fafc", borderRadius: "4px", border: "1px dashed #cbd5e1" }}>
-              <label style={{ ...styles.label, fontSize: "12px", color: "#64748b" }}>💡 Tạo nhanh danh mục mới cho loại này:</label>
+            <div
+              style={{
+                ...styles.inputGroup,
+                marginTop: "5px",
+                padding: "10px",
+                background: "#f8fafc",
+                borderRadius: "4px",
+                border: "1px dashed #cbd5e1",
+              }}
+            >
+              <label
+                style={{ ...styles.label, fontSize: "12px", color: "#64748b" }}
+              >
+                💡 Tạo nhanh danh mục mới cho loại này:
+              </label>
               <div style={{ display: "flex", gap: "8px", marginTop: "5px" }}>
                 <input
                   type="text"
                   placeholder="Ví dụ: Quỹ riêng, Học phí..."
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
-                  style={{ ...styles.input, flex: 1, padding: "6px 10px", fontSize: "13px" }}
+                  style={{
+                    ...styles.input,
+                    flex: 1,
+                    padding: "6px 10px",
+                    fontSize: "13px",
+                  }}
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleCreateCategory}
-                  style={{ padding: "6px 12px", backgroundColor: "#10b981", color: "#fff", border: "none", borderRadius: "4px", fontWeight: "bold", fontSize: "13px", cursor: "pointer" }}
+                  style={{
+                    padding: "6px 12px",
+                    backgroundColor: "#10b981",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "4px",
+                    fontWeight: "bold",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                  }}
                 >
                   + Thêm
                 </button>
@@ -310,7 +410,7 @@ useEffect(() => {
               Lưu Giao Dịch Vào DB
             </button>
           </form>
-</div>
+        </div>
 
         {/* BLOCK 2: BẢNG LỊCH SỬ GIAO DỊCH THẬT */}
         <div style={{ ...styles.card, flex: 2 }}>
@@ -318,16 +418,16 @@ useEffect(() => {
             Lịch Sử Giao Dịch Thật ({transactions.length})
           </h4>
           <table style={styles.table}>
-          <thead>
-            <tr style={styles.thRow}>
-              <th style={styles.th}>Ngày</th>
-              <th style={styles.th}>Danh mục</th> 
-              <th style={styles.th}>Loại</th>
-              <th style={styles.th}>Số tiền</th>
-              <th style={styles.th}>Ghi chú</th>
-              <th style={styles.th}>Hành động</th>
-            </tr>
-          </thead>
+            <thead>
+              <tr style={styles.thRow}>
+                <th style={styles.th}>Ngày</th>
+                <th style={styles.th}>Danh mục</th>
+                <th style={styles.th}>Loại</th>
+                <th style={styles.th}>Số tiền</th>
+                <th style={styles.th}>Ghi chú</th>
+                <th style={styles.th}>Hành động</th>
+              </tr>
+            </thead>
             <tbody>
               {transactions.length === 0 ? (
                 <tr>

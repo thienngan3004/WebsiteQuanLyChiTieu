@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+const aiRoutes = require('./routes/aiRoutes');
 const transactionRoutes = require('./routes/transaction');
 const categoryRoutes = require('./routes/categoryRoutes');
 const authRoutes = require('./routes/authRoutes'); 
@@ -25,6 +26,8 @@ app.use('/api/auth', authRoutes);
 app.use("/api/transactions", require("./routes/transaction"));
 app.use('/api/categories', categoryRoutes);
 app.use('/api/budgets', budgetRoutes);
+
+app.use("/api/ai", aiRoutes);
 
 app.get('/', (req, res) => {
     res.send('Trang web đang chạy ổn định...');
