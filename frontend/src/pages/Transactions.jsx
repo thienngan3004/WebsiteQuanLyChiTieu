@@ -32,6 +32,63 @@ function Transactions() {
     }
   };
 
+  const [messages, setMessages] = useState([
+    {
+      sender: "ai",
+      text: "Xin chào! Tôi là cố vấn tài chính thông minh của bạn.",
+    },
+  ]);
+
+  // 2. State lưu nội dung ô nhập liệu
+  const [inputValue, setInputValue] = useState("");
+
+  // 3. State quản lý trạng thái chờ AI phản hồi (Loading)
+  const [loading, setLoading] = useState(false);
+
+  // 4. Hàm xử lý gửi tin nhắn
+  const handleSendMessage = async (e) => {
+    e.preventDefault(); // Chặn reload trang khi submit form
+    if (!inputValue.trim() || loading) return; // Nếu ô nhập trống hoặc đang load thì bỏ qua
+
+    const userMessage = inputValue.trim();
+
+    // Cập nhật tin nhắn của người dùng lên màn hình trước, rồi xóa trống ô nhập
+    setMessages((prev) => [...prev, { sender: "user", text: userMessage }]);
+    setInputValue("");
+    setLoading(true);
+
+    try {
+      // Lấy token đăng nhập từ localStorage để vượt qua authMiddleware ở backend
+      const token = localStorage.getItem("token");
+
+      // Gọi API bằng phương thức POST lên backend
+      const response = await axios.post(
+        'http://localhost:5000/api/assistant/chat', 
+        { message: userMessage },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Nhận phản hồi từ Gemini và cập nhật vào danh sách tin nhắn
+      if (response.data && response.data.reply) {
+
+        const cleanReply = response.data.reply.replace(/\*\*/g, "");
+
+        setMessages((prev) => [
+          ...prev,
+          { sender: "ai", text: cleanReply },
+        ]);
+      }
+    } catch (error) {
+      console.error("Lỗi gửi tin nhắn chatbot:", error);
+      setMessages((prev) => [
+        ...prev,
+        { sender: "ai", text: "Trợ lý AI đang bận, vui lòng thử lại sau nhé!" },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Chỉnh sửa lại useEffect để khi vào trang nó tải cả Giao dịch và Danh mục luôn
   useEffect(() => {
     fetchTransactions();
@@ -206,16 +263,19 @@ function Transactions() {
   const [budgetWarnings, setBudgetWarnings] = useState([]);
   const [budgetFormData, setBudgetFormData] = useState({
     category_id: "",
-    amount: ""
+    amount: "",
   });
 
   // 2. Hàm lấy danh sách cảnh báo ngân sách từ Backend
   const fetchBudgetWarnings = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await axios.get("http://localhost:5000/api/budgets/check-warnings", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await axios.get(
+        "http://localhost:5000/api/budgets/check-warnings",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       if (response.data.success) {
         setBudgetWarnings(response.data.data);
       }
@@ -236,19 +296,23 @@ function Transactions() {
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
 
-      await axios.post("http://localhost:5000/api/budgets", {
-        category_id: parseInt(budgetFormData.category_id),
-        amount: parseFloat(budgetFormData.amount),
-        month: currentMonth,
-        year: currentYear
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.post(
+        "http://localhost:5000/api/budgets",
+        {
+          category_id: parseInt(budgetFormData.category_id),
+          amount: parseFloat(budgetFormData.amount),
+          month: currentMonth,
+          year: currentYear,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
       alert("Đặt hạn mức thành công!");
-      setIsOpenBudgetModal(false); 
-      setBudgetFormData({ category_id: "", amount: "" }); 
-      fetchBudgetWarnings(); 
+      setIsOpenBudgetModal(false);
+      setBudgetFormData({ category_id: "", amount: "" });
+      fetchBudgetWarnings();
     } catch (error) {
       console.error("Lỗi tạo ngân sách:", error);
       alert(error.response?.data?.message || "Có lỗi xảy ra khi đặt hạn mức.");
@@ -504,22 +568,70 @@ function Transactions() {
         >
           {isChatOpen ? "✖" : "💬 Trợ lý AI"}
         </button>
+
         {isChatOpen && (
           <div style={styles.chatWindow}>
             <div style={styles.chatHeader}>🤖 Trợ Lý Tài Chính AI</div>
-            <div style={styles.chatBody}>
-              <div style={styles.msgAi}>
-                Xin chào! Tôi là cố vấn tài chính thông minh của bạn.
-              </div>
+
+            {/* Vùng Body hiển thị danh sách tin nhắn động */}
+            <div
+              style={{
+                ...styles.chatBody,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px",
+              }}
+            >
+              {messages.map((msg, index) => (
+                <div
+                  key={index}
+                  style={{
+                    ...styles.msgAi, // Thừa hưởng css gốc của ní
+                    // Nếu là user thì tự động đẩy text sang bên phải và đổi màu nền (tùy chọn)
+                    alignSelf:
+                      msg.sender === "user" ? "flex-end" : "flex-start",
+                    backgroundColor:
+                      msg.sender === "user" ? "#7F56D9" : "#E4E7EC",
+                    color: msg.sender === "user" ? "#FFFFFF" : "#000000",
+                    whiteSpace: "pre-line", // Giúp hiển thị đúng các dấu xuống dòng khi Gemini trả về list
+                  }}
+                >
+                  {msg.text}
+                </div>
+              ))}
+
+              {/* Hiển thị dòng thông báo nhỏ khi đang đợi Gemini rep */}
+              {loading && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#888",
+                    fontStyle: "italic",
+                    paddingLeft: "5px",
+                  }}
+                >
+                  AI đang suy nghĩ...
+                </div>
+              )}
             </div>
-            <div style={styles.chatFooter}>
+
+            {/* Bọc input vào form để kích hoạt tính năng submit bằng phím Enter */}
+            <form onSubmit={handleSendMessage} style={styles.chatFooter}>
               <input
                 type="text"
-                placeholder="Hỏi AI về chi tiêu..."
+                placeholder={
+                  loading ? "Đang đợi AI phản hồi..." : "Hỏi AI về chi tiêu..."
+                }
                 style={styles.chatInput}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)} // Bắt sự kiện gõ phím
+                disabled={loading} // Khóa input khi đang xử lý để tránh spam gửi
               />
-              <button style={styles.btnSend}>Gửi</button>
-            </div>
+              <button type="submit" style={styles.btnSend} disabled={loading}>
+                Gửi
+              </button>
+            </form>
           </div>
         )}
       </div>

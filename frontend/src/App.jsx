@@ -6,6 +6,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Layout from "./components/Layout";
+import Reports from "./pages/Reports";
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="/transactions" element={<Transactions />} />
         </Route>
 
+        <Route path="/reports" element={<Reports />} />
         {/* Route không tồn tại */}
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
