@@ -23,9 +23,9 @@ function App() {
         <Route element={<Layout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/transactions" element={<Transactions />} />
+          <Route path="/reports" element={<Reports />} />
         </Route>
 
-        <Route path="/reports" element={<Reports />} />
         {/* Route không tồn tại */}
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
