@@ -80,9 +80,10 @@ function Transactions() {
       }
     } catch (error) {
       console.error("Lỗi gửi tin nhắn chatbot:", error);
+      const serverErrorMessage = error.response?.data?.error || "Trợ lý AI đang bận, vui lòng thử lại sau nhé!";
       setMessages((prev) => [
         ...prev,
-        { sender: "ai", text: "Trợ lý AI đang bận, vui lòng thử lại sau nhé!" },
+        { sender: "ai", text: serverErrorMessage},
       ]);
     } finally {
       setLoading(false);
