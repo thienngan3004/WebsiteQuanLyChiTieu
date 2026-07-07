@@ -98,9 +98,12 @@ function Transactions() {
   // 2. Hàm gọi API lấy danh sách giao dịch từ Backend (Read trong CRUD)
   const fetchTransactions = async () => {
     try {
-      const response = await axios.get(
-        "http://localhost:5000/api/transactions"
-      );
+      const token = localStorage.getItem("token");
+      const response = await axios.get("http://localhost:5000/api/transactions", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
       setTransactions(response.data); // Đổ dữ liệu thật vào state để render ra bảng
     } catch (error) {
       console.error("Lỗi lấy danh sách giao dịch:", error);
@@ -179,6 +182,7 @@ function Transactions() {
     }
   };
 
+  
   // Hàm xử lý tạo danh mục động mới từ giao diện
   const handleCreateCategory = async () => {
     // 1. Kiểm tra dữ liệu đầu vào
@@ -443,6 +447,19 @@ function Transactions() {
                   + Thêm
                 </button>
               </div>
+            </div>
+
+            <div className="form-group">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nguồn thanh toán / Nhận tiền</label>
+              <select 
+                value={formData.source_type} 
+                onChange={(e) => setFormData({...formData, source_type: e.target.value})}
+                className="w-full p-2 border rounded-md"
+              >
+                <option value="cash">Tiền mặt</option>
+                <option value="card">Thẻ ngân hàng (ATM/Visa)</option>
+                <option value="e-wallet">Ví điện tử (Momo, ZaloPay...)</option>
+              </select>
             </div>
 
             {/* Ngày giao dịch */}

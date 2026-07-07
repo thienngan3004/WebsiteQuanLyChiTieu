@@ -8,6 +8,7 @@ import Transactions from "./pages/Transactions";
 import Layout from "./components/Layout";
 import Reports from "./pages/Reports";
 
+
 function App() {
   return (
     <Router>
@@ -24,6 +25,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/reports" element={<Reports />} />
+
         </Route>
 
         {/* Route không tồn tại */}

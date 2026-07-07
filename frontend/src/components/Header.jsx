@@ -1,15 +1,60 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 export default function Header() {
-  // Lấy đường dẫn hiện tại để tô màu tab
+  // Lấy đường dẫn hiện tại để tô màu tab điều hướng
   const currentPath = window.location.pathname;
 
-  // Hàm chuyển trang an toàn, giữ nguyên State của ứng dụng React
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef(null);
+
+  // State lưu thông tin user
+  const [user, setUser] = useState({
+    name: "Người dùng",
+    email: "",
+    avatar: "" 
+  });
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser({
+          name: parsedUser.name || "Người dùng",
+          email: parsedUser.email || "",
+          avatar: parsedUser.picture || parsedUser.avatarUrl || parsedUser.avatar || ""
+        });
+      } catch (e) {
+        console.error("Lỗi lấy thông tin user:", e);
+      }
+    }
+  }, []);
+
+  // Chữ cái đầu tiên đại diện nếu không có ảnh
+  const avatarLetter = user.name ? user.name.charAt(0).toUpperCase() : "U";
+
+  // Hàm chuyển trang an toàn sử dụng cơ chế sẵn có của ní, không lo mất State
   const navigateTo = (path) => {
     window.history.pushState({}, "", path);
-    // Kích hoạt một sự kiện để React Router nhận biết vừa có sự thay đổi đường dẫn
     const navEvent = new PopStateEvent('popstate');
     window.dispatchEvent(navEvent);
+    setShowMenu(false);
+  };
+
+  // Click ra ngoài tự đóng dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.clear(); // Xóa sạch bộ nhớ tạm
+    window.location.href = "/login"; 
   };
 
   return (
@@ -17,7 +62,7 @@ export default function Header() {
       {/* CỤM TRÁI: LOGO */}
       <div style={styles.logo}>💰 QL Chi Tiêu</div>
 
-      {/* CỤM GIỮA: NAV MENU (Dùng button để không bị reload trang) */}
+      {/* 🌟 CỤM GIỮA: TRẢ LẠI MENU NAV ĐỂ KHÔNG BỊ TRỐNG TRANG */}
       <nav style={styles.nav}>
         <button 
           onClick={() => navigateTo("/dashboard")} 
@@ -48,11 +93,52 @@ export default function Header() {
         </button>
       </nav>
 
-      {/* CỤM PHẢI: SEARCH & AVATAR */}
-      <div style={styles.right}>
-        <input type="text" placeholder="Tìm kiếm..." style={styles.search} />
-        <button style={styles.icon}>🔔</button>
-        <div style={styles.avatar}>H</div>
+      {/* CỤM PHẢI: HIỂN THỊ AVATAR & TÊN ĐỘNG */}
+      <div style={styles.right} ref={menuRef}>        
+        <div 
+          onClick={() => setShowMenu(!showMenu)} 
+          style={styles.avatarWrapper}
+          title={user.name}
+        >
+          {user.avatar ? (
+            <img 
+              src={user.avatar} 
+              alt="Avatar" 
+              style={styles.avatarImg} 
+              onError={(e) => {
+                e.target.style.display = 'none';
+                setUser(prev => ({ ...prev, avatar: "" }));
+              }}
+            />
+          ) : (
+            <span style={styles.avatarText}>{avatarLetter}</span>
+          )}
+        </div>
+
+        {/* DROP DOWN MENU */}
+        {showMenu && (
+          <div style={styles.dropdown}>
+            <div style={styles.menuHeader}>
+              <div style={styles.menuAvatarMini}>
+                {user.avatar ? (
+                  <img src={user.avatar} alt="Avatar" style={styles.avatarImg} />
+                ) : (
+                  avatarLetter
+                )}
+              </div>
+              <div>
+                <div style={styles.profileName}>{user.name}</div>
+                <div style={styles.profileRole}>{user.email || "Thành viên"}</div>
+              </div>
+            </div>
+            
+            <hr style={styles.divider} />
+            
+            <button onClick={handleLogout} style={styles.logoutBtn}>
+            Đăng xuất
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );
@@ -104,37 +190,94 @@ const styles = {
   right: {
     display: 'flex',
     alignItems: 'center',
-    gap: 15,
+    gap: 12,
+    position: "relative",
   },
-  search: {
-    width: 220,
-    padding: "9px 15px",
-    borderRadius: 25,
-    border: "1px solid #ddd",
-    outline: "none",
+  welcomeText: {
+    fontSize: "14px",
+    color: "#475569",
+    fontFamily: "sans-serif",
   },
-  icon: {
-    width: 40,
-    height: 40,
-    borderRadius: "50%",
-    border: "none",
-    background: "#f1f5f9",
-    cursor: "pointer",
-    fontSize: 18,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  avatar: {
+  avatarWrapper: {
     width: 42,
     height: 42,
     borderRadius: "50%",
     background: "#2563eb",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    cursor: "pointer",
+    boxShadow: "0 2px 8px rgba(37,99,235,0.2)",
+    userSelect: "none",
+    overflow: "hidden",
+  },
+  avatarImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  avatarText: {
     color: "#fff",
+    fontWeight: "bold",
+    fontSize: "16px",
+  },
+  dropdown: {
+    position: "absolute",
+    top: "52px",
+    right: 0,
+    background: "#fff",
+    borderRadius: "12px",
+    boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+    border: "1px solid #f1f5f9",
+    width: "250px",
+    padding: "8px 0",
+    display: "flex",
+    flexDirection: "column",
+  },
+  menuHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "12px 16px",
+  },
+  menuAvatarMini: {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    background: "#eff6ff",
+    color: "#2563eb",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     fontWeight: "bold",
+    overflow: "hidden"
+  },
+  profileName: {
+    fontSize: "14px",
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  profileRole: {
+    fontSize: "12px",
+    color: "#64748b",
+    wordBreak: "break-all"
+  },
+  divider: {
+    border: 0,
+    borderTop: "1px solid #f1f5f9",
+    margin: "6px 0",
+  },
+  logoutBtn: {
+    background: "none",
+    border: "none",
+    textAlign: "left",
+    padding: "12px 16px",
+    fontSize: "14px",
+    fontWeight: "600",
+    color: "#dc2626",
     cursor: "pointer",
+    width: "100%",
+    fontFamily: "sans-serif",
+    transition: "background 0.2s ease",
   },
 };

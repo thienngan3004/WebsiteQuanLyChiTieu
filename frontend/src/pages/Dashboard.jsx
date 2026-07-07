@@ -29,8 +29,11 @@ ChartJS.register(
 export default function Dashboard() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedYear, setSelectedYear] = useState("2026");
   const [selectedMonth, setSelectedMonth] = useState("Tất cả");
+  const [selectedWeek, setSelectedWeek] = useState("Tất cả");
+
+  const monthsList = ["Tất cả", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const weeksList = ["Tất cả", "Tuần 1", "Tuần 2", "Tuần 3", "Tuần 4", "Tuần 5"];
 
   const [isOpenBudgetModal, setIsOpenBudgetModal] = useState(false);
   const [budgetFormData, setBudgetFormData] = useState({
@@ -141,14 +144,26 @@ export default function Dashboard() {
   // ==========================================
   const filteredTransactions = transactions.filter((t) => {
     const tDate = new Date(t.date);
-    const matchesYear = tDate.getFullYear().toString() === selectedYear;
+    const m = tDate.getMonth() + 1; // Lấy tháng thực tế (1 - 12)
+    const day = tDate.getDate();     // Lấy ngày trong tháng (1 - 31)
 
+    // 1. Kiểm tra khớp Tháng
     let matchesMonth = true;
     if (selectedMonth !== "Tất cả") {
-      const m = tDate.getMonth() + 1;
-      matchesMonth = `Tháng ${m}` === selectedMonth;
+      matchesMonth = m === Number(selectedMonth);
     }
-    return matchesYear && matchesMonth;
+
+    // 2. Kiểm tra khớp Tuần (Chia ngày theo phân khúc 7 ngày một tuần)
+    let matchesWeek = true;
+    if (selectedWeek !== "Tất cả" && selectedMonth !== "Tất cả") {
+      if (selectedWeek === "Tuần 1") matchesWeek = day >= 1 && day <= 7;
+      else if (selectedWeek === "Tuần 2") matchesWeek = day >= 8 && day <= 14;
+      else if (selectedWeek === "Tuần 3") matchesWeek = day >= 15 && day <= 21;
+      else if (selectedWeek === "Tuần 4") matchesWeek = day >= 22 && day <= 28;
+      else if (selectedWeek === "Tuần 5") matchesWeek = day >= 29;
+    }
+
+    return matchesMonth && matchesWeek;
   });
 
   // ==========================================
@@ -331,58 +346,53 @@ export default function Dashboard() {
         <div style={styles.dashboardGrid}>
           {/* Ô BẢNG ĐIỀU KHIỂN BỘ LỌC (NĂM / THÁNG) */}
           <div style={styles.card}>
-            <h4 style={styles.cardTitle}>Bảng điều khiển</h4>
+          <h3 style={styles.cardTitle}>Bảng điều khiển</h3>
 
-            <div style={styles.filterSection}>
-              <p style={styles.filterTitle}>Năm</p>
-              <div style={styles.btnGroup}>
-                {["2024", "2025", "2026"].map((y) => (
-                  <button
-                    key={y}
-                    onClick={() => setSelectedYear(y)}
-                    style={{
-                      ...styles.filterBtn,
-                      ...(selectedYear === y ? styles.activeBtn : {}),
-                    }}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={styles.filterSection}>
-              <p style={styles.filterTitle}>Tháng</p>
-              <div style={styles.gridMonths}>
-                {[
-                  "Tất cả",
-                  "Tháng 1",
-                  "Tháng 2",
-                  "Tháng 3",
-                  "Tháng 4",
-                  "Tháng 5",
-                  "Tháng 6",
-                  "Tháng 7",
-                  "Tháng 8",
-                  "Tháng 9",
-                  "Tháng 10",
-                  "Tháng 11",
-                  "Tháng 12",
-                ].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setSelectedMonth(m)}
-                    style={{
-                      ...styles.monthBtn,
-                      ...(selectedMonth === m ? styles.activeMonthBtn : {}),
-                    }}
-                  >
-                    {m === "Tất cả" ? "Tất cả" : m.replace("Tháng ", "")}
-                  </button>
-                ))}
-              </div>
+          {/* CHỌN THÁNG */}
+          <div style={styles.section}>
+            <label style={styles.label}>Tháng trong năm</label>
+            <div style={styles.gridContainer}>
+              {monthsList.map((month) => (
+                <button
+                  key={month}
+                  type="button"
+                  onClick={() => {
+                    setSelectedMonth(month);
+                    setSelectedWeek("Tất cả"); // Auto reset tuần khi đổi tháng
+                  }}
+                  style={{
+                    ...styles.btn,
+                    ...(selectedMonth === month ? styles.btnActiveMonth : {}),
+                  }}
+                >
+                  {month === "Tất cả" ? "Tất cả" : `Tháng ${month}`}
+                </button>
+              ))}
             </div>
           </div>
+
+          {/* CHỌN TUẦN */}
+          <div style={styles.section}>
+            <label style={styles.label}>Tuần trong tháng</label>
+            <div style={styles.weekFlexContainer}>
+              {weeksList.map((week) => (
+                <button
+                  key={week}
+                  type="button"
+                  disabled={selectedMonth === "Tất cả"} // Khóa chọn tuần nếu chọn "Tất cả tháng"
+                  onClick={() => setSelectedWeek(week)}
+                  style={{
+                    ...styles.btnWeek,
+                    ...(selectedWeek === week ? styles.btnActiveWeek : {}),
+                    ...(selectedMonth === "Tất cả" ? styles.btnDisabled : {}),
+                  }}
+                >
+                  {week}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
           {/* BIỂU ĐỒ ĐƯỜNG XU HƯỚNG CHI TIÊU */}
           <div style={{ ...styles.card, flex: 2 }}>
@@ -397,13 +407,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* BIỂU ĐỒ TRÒN KHOẢN THU */}
+          {/* BIỂU ĐỒ TRÒN KHOẢN THU
           <div style={styles.card}>
             <h4 style={styles.cardTitle}>Khoản thu theo Danh mục</h4>
             <div style={styles.chartHolder}>
               <Pie data={pieChartData} />
             </div>
-          </div>
+          </div> */}
 
           {/* BIỂU ĐỒ TRÒN KHOẢN chi */}
           <div style={styles.card}>
@@ -923,5 +933,85 @@ const styles = {
     fontSize: "16px",
     color: "#64748b",
     fontWeight: "600",
+  },
+  controlCard: {
+    background: "#fff",
+    borderRadius: "16px",
+    padding: "24px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.05)",
+    width: "100%",
+    maxWidth: "400px",
+    marginBottom: "24px",
+  },
+  cardTitle: {
+    fontSize: "18px",
+    fontWeight: "700",
+    color: "#1e293b",
+    marginBottom: "20px",
+    marginTop: 0,
+  },
+  section: {
+    marginBottom: "20px",
+  },
+  label: {
+    display: "block",
+    fontSize: "13px",
+    fontWeight: "600",
+    color: "#64748b",
+    marginBottom: "10px",
+  },
+  gridContainer: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: "8px",
+  },
+  weekFlexContainer: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+  btn: {
+    padding: "10px 6px",
+    borderWidth: "1px",            
+    borderStyle: "solid",
+    borderColor: "#cbd5e1",
+    borderRadius: "8px",
+    background: "#fff",
+    color: "#334155",
+    fontSize: "12px",
+    fontWeight: "500",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  },
+  btnWeek: {
+    padding: "10px 14px",
+    borderWidth: "1px",            
+    borderStyle: "solid",
+    borderColor: "#cbd5e1",
+    borderRadius: "8px",
+    background: "#fff",
+    color: "#334155",
+    fontSize: "13px",
+    fontWeight: "500",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  },
+  btnActiveMonth: {
+    background: "#2563eb",
+    color: "#fff",
+    borderColor: "#2563eb",
+    fontWeight: "600",
+  },
+  btnActiveWeek: {
+    background: "#10b981",
+    color: "#fff",
+    borderColor: "#10b981",
+    fontWeight: "600",
+  },
+  btnDisabled: {
+    background: "#f1f5f9",
+    color: "#94a3b8",
+    borderColor: "#e2e8f0",
+    cursor: "not-allowed",
   },
 };
