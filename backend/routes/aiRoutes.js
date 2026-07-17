@@ -75,11 +75,21 @@ router.post("/", authMiddleware, async (req, res) => {
   const currentContextDate = `Hôm nay là thứ: ${today.getDay() === 0 ? "Chủ Nhật" : "Thứ " + (today.getDay() + 1)}, ngày ${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
 
   try {
+    const [userCategories] = await db.query(
+      "SELECT id, name, type FROM categories WHERE user_id = ? OR user_id IS NULL",
+      [userId]
+    );
+
+    const realCategoriesText = userCategories.map(c => `- ${c.name} (${c.type === 'expense' ? 'Chi' : 'Thu'})`).join("\n");
+    
     // --- BƯỚC 1: PROMPT PHÂN TÍCH Ý ĐỊNH NÂNG CẤP BÓC TÁCH THỜI GIAN ---
     const classifyPrompt = `
     Bạn là một hệ thống phân tích ý định người dùng cho ứng dụng quản lý tài chính cá nhân.
     Dựa vào câu nói của người dùng và ngữ cảnh thời gian thực tế bên dưới, hãy trả về một chuỗi JSON duy nhất, tuyệt đối không giải thích gì thêm ngoài JSON.
     
+    DANH SÁCH DANH MỤC THỰC TẾ TRONG HỆ THỐNG (Hãy chọn category_name trùng khớp hoặc gần đúng nhất với danh sách này):
+    ${realCategoriesText}
+
     Ngữ cảnh thời gian thực tế của hệ thống: ${currentContextDate}
     Câu nói của người dùng: "${sanitizedMessage}"
 
@@ -111,6 +121,10 @@ router.post("/", authMiddleware, async (req, res) => {
     - Nếu user nói: ví, momo, zalopay, e-wallet -> trả về "e-wallet"
     - Nếu không nhắc tới, mặc định trả về null hoặc "cash".
 
+    HƯỚNG DẪN ĐẶC BIỆT ĐỂ MAP "category_name" CHUẨN XÁC:
+    - Nếu câu nói có các từ khóa: xăng, tiền xăng, đổ xăng, xe cộ, sửa xe, grab, taxi, bus, đi lại -> BẮT BUỘC phải chọn category_name là "Di chuyển". Tuyệt đối KHÔNG ĐƯỢC chọn "Mua sắm".
+    - Nếu câu nói có các từ khóa: ăn, uống, trà sữa, cafe, cơm, phở, bún, liên hoan,... -> BẮT BUỘC chọn "Ăn uống".
+    - Nếu câu nói có các từ khóa: áo, quần, giày, dép, mua hộ, đồ dùng, thiết bị,... -> chọn "Mua sắm".
     `;
 
     const classifyResponse = await axios.post(`${OLLAMA_API_URL}/generate`, {
@@ -147,8 +161,6 @@ router.post("/", authMiddleware, async (req, res) => {
 
       if (intent.data.start_date && intent.data.end_date) {
         queryDetail += ` AND t.date BETWEEN STR_TO_DATE(?, '%Y-%m-%d %H:%i:%s') AND STR_TO_DATE(?, '%Y-%m-%d %H:%i:%s')`;
-        
-        // Thêm +07:00 vào cuối chuỗi thời gian để MySQL ép đúng về múi giờ Việt Nam khi so sánh
         queryParams.push(`${intent.data.start_date} 00:00:00`, `${intent.data.end_date} 23:59:59`);
         dbStatusContext = `Danh sách chi tiết các giao dịch từ ngày ${intent.data.start_date} đến ngày ${intent.data.end_date}:\n`;
       } else {
@@ -173,30 +185,6 @@ router.post("/", authMiddleware, async (req, res) => {
         });
       }
     }
-    
-    // HÀNH ĐỘNG 2: THÊM GIAO DỊCH TỰ ĐỘNG (Đã fix lỗi 'date')
-    // else if (intent.action === "add" && intent.data.amount) {
-    //   const { amount, description, category_name, type } = intent.data;
-    //   const sourceType = intent.data.source_type || 'cash';
-
-    //   const catName = intent.data.category_name || "Ăn uống";
-    //   const [categories] = await db.query("SELECT id FROM categories WHERE name LIKE ? LIMIT 1", [`%${catName}%`]);
-    //   const categoryId = categories.length > 0 ? categories[0].id : 1; 
-
-    //   const [insertRes] = await db.query(
-    //     "INSERT INTO transactions (user_id, amount, type, category_id, description, date) VALUES (?, ?, ?, ?, ?, ?)",
-    //     [
-    //       userId, 
-    //       intent.data.amount, 
-    //       intent.data.type || "expense", 
-    //       categoryId, 
-    //       intent.data.description || "Ghi chép nhanh qua Trợ lý AI",
-    //       new Date() // Đã bổ sung dữ liệu ngày hiện tại ở đây để sửa lỗi ER_NO_DEFAULT_FOR_FIELD
-    //     ]
-    //   );
-    //   dbStatusContext = `Hệ thống thông báo: Đã thêm thành công vào Database giao dịch mới ID: ${insertRes.insertId}, số tiền ${parseFloat(intent.data.amount).toLocaleString()} VND, danh mục: ${catName}, mô tả: ${intent.data.description || 'Trống'}. Hãy xác nhận lại với người dùng.`;
-    // } 
-
 
     else if (intent.action === "add") {
       const { amount, description, category_name, type } = intent.data;
@@ -226,7 +214,7 @@ router.post("/", authMiddleware, async (req, res) => {
       }
     }
     
-    // HÀNH ĐỘNG 3: SỬA GIAO DỊCH
+    // HÀNH ĐỘNG 3: XÓA GIAO DỊCH
     // =========================================================
     // 🔧 ĐOẠN CODE XÓA (DELETE) NÂNG CẤP: TỰ TÌM ID NẾU USER CHỈ GÕ VĂN BẢN
     // =========================================================
@@ -276,8 +264,11 @@ router.post("/", authMiddleware, async (req, res) => {
       if (intent.data.amount) { fields.push("amount = ?"); params.push(intent.data.amount); }
       
       if (intent.data.category_name) {
-        const [categories] = await db.query("SELECT id FROM categories WHERE name LIKE ? LIMIT 1", [`%${intent.data.category_name}%`]);
-        if (categories.length > 0) { fields.push("category_id = ?"); params.push(categories[0].id); }
+        const foundCat = userCategories.find(c => c.name.toLowerCase().includes(intent.data.category_name.toLowerCase()));
+        if (foundCat) { 
+          fields.push("category_id = ?"); 
+          params.push(foundCat.id); 
+        }
       }
 
       if (cleanTxId && fields.length > 0) {

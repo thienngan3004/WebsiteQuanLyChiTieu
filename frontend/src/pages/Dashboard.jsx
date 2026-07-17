@@ -215,22 +215,41 @@ export default function Dashboard() {
   const lineChartValues = Object.values(dashboardCategoryTotals);
 
   // Cấu hình lại data cho Line Chart hiển thị theo Tên Danh Mục
-  const lineChartData = {
-    labels: lineChartLabels.length > 0 ? lineChartLabels : ["Chưa có dữ liệu"],
-    datasets: [
-      {
-        label: "Số tiền (Triệu VNĐ hoặc VNĐ)",
-        data: lineChartValues.length > 0 ? lineChartValues : [0],
-        borderColor: "#3b82f6", // Đường màu xanh dương uốn lượn giống mẫu
-        backgroundColor: "rgba(59, 130, 246, 0.05)", // Đổ nền mờ nhẹ phía dưới
-        tension: 0.4, // Độ cong mượt mà của đường line giống ảnh mẫu
-        pointBackgroundColor: "#ef4444", // Chấm nút màu đỏ nổi bật trên đỉnh
-        pointBorderColor: "#fff",
-        pointRadius: 5,
-        fill: true,
-      },
-    ],
-  };
+  const dynamicBarColors = lineChartLabels.length > 0 
+  ? lineChartLabels.map(label => {
+      const lowerLabel = label.toLowerCase();
+      // Nếu danh mục chứa từ khóa thu nhập/lương thưởng -> Màu xanh lá mượt mà
+      if (lowerLabel.includes("lương") || lowerLabel.includes("thưởng") || lowerLabel.includes("thu nhập")) {
+        return '#10b981'; 
+      }
+      // Các khoản chi tiêu thông thường -> Đổi sang các màu nổi bật để dễ nhìn
+      if (lowerLabel.includes("ăn uống") || lowerLabel.includes("ăn sáng")) return '#ef4444'; // Đỏ nhẹ
+      if (lowerLabel.includes("mua sắm") || lowerLabel.includes("giải trí")) return '#ec4899'; // Hồng
+      if (lowerLabel.includes("bạn bè")) return '#f59e0b'; // Cam vàng
+      if (lowerLabel.includes("gia đình")) return '#3b82f6'; // Xanh dương
+      
+      return '#8b5cf6'; // Màu tím mặc định cho các danh mục chi khác (như quyên góp,...)
+    })
+  : ['#eff6ff']; // Màu nền mặc định khi chưa có dữ liệu
+
+const lineChartData = {
+  labels: lineChartLabels.length > 0 ? lineChartLabels : ["Chưa có dữ liệu"],
+  datasets: [
+    {
+      label: "Số tiền (VND)",
+      data: lineChartValues.length > 0 ? lineChartValues : [0],
+      
+      // 🎨 Gán mảng màu động vừa xử lý ở trên vào đây
+      backgroundColor: dynamicBarColors, 
+      borderWidth: 0, // Bỏ viền cho cột nhìn hiện đại hơn
+      
+      // 📐 Bóp bề ngang cột lại cho thon gọn, không bị béo ú dính vào nhau nữa
+      barPercentage: 0.4,
+      categoryPercentage: 0.5,
+      maxBarThickness: 50, // Ép cứng độ rộng cột tối đa là 50px nhìn cho thanh thoát
+    },
+  ],
+};
 
   // 2. Biểu đồ Tròn (Hình nhẫn): Khoản thu theo danh mục
   const incomes = filteredTransactions.filter((t) => t.type === "income");
@@ -353,51 +372,106 @@ export default function Dashboard() {
     },
   };
 
-  // 3. Biểu đồ Cột dọc: So sánh nhanh Thu - Chi - Số dư
-  const barChartData = {
-    labels: ["Tổng Thu", "Tổng Chi", "Số Dư"],
-    datasets: [
-      {
-        label: "Số tiền (VND)",
-        data: [totalIncome, totalExpense, currentBalance],
-        backgroundColor: ["#10b981", "#ef4444", "#3b82f6"],
-      },
-    ],
-  };
 
-  const lineChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      datalabels: {
-        display: true,
-        color: "black",         
-        anchor: "end", 
-        align: "top",  
-        offset: -3,
+  const [chartData503020, setChartData503020] = useState(null);
+
+const fetchBalance503020 = async () => {
+  try {
+    const token = localStorage.getItem("token");
+    // 💡 Dùng axios và vả thẳng cổng 5000 giống hàm hạn mức để trị dứt điểm lỗi HTML
+    const response = await axios.get(
+      "http://localhost:5000/api/dashboard/balance-503020",
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    if (response.data.success && response.data.data) {
+      const dbData = response.data.data;
+
+      setChartData503020({
+        labels: ['Hạn mức Chuẩn', 'Thực tế của Bạn'],
+        datasets: [
+          {
+            label: 'Thiết yếu',
+            data: [dbData.targetNeeds, dbData.realNeeds],
+            backgroundColor: '#3b82f6',
+            stack: 'Stack 0',
+            barPercentage: 0.5,
+            categoryPercentage: 0.5,
+          },
+          {
+            label: 'Sở thích',
+            data: [dbData.targetWants, dbData.realWants],
+            backgroundColor: '#f59e0b',
+            stack: 'Stack 0',
+            barPercentage: 0.5,
+            categoryPercentage: 0.5,
+          },
+          {
+            label: 'Tích lũy/Số dư',
+            data: [dbData.targetSavings, dbData.realSavings],
+            backgroundColor: '#10b981',
+            stack: 'Stack 0',
+            barPercentage: 0.5,
+            categoryPercentage: 0.5,
+          },
+        ],
+      });
+    }
+  } catch (error) {
+    console.error("Lỗi lấy dữ liệu cân đối 50/30/20:", error);
+  }
+};
+
+useEffect(() => {
+  fetchBalance503020();
+}, [transactions]); 
+  
+const lineChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    datalabels: {
+      display: true,
+      color: "#475569", 
+      anchor: "end", 
+      align: "top",  
+      offset: 5, 
+      font: {
+        size: 9
+      },
+      formatter: (value) => {
+        if (!value) return "0 VND";
+        return value.toLocaleString("vi-VN") + " VND"; 
+      },
+    },
+    legend: {
+      display: false, 
+    },
+  },
+  scales: {
+    x: {
+      ticks: {
+        maxRotation: 30, 
+        minRotation: 30,
         font: {
-          size: 10,
-        },
-        formatter: (value) => {
-          if (!value) return "0 VND";
-          return value.toLocaleString("vi-VN") + " VND"; 
-        },
+          size: 11
+        }
       },
-      legend: {
-        display: true,
-        position: "top",
+      grid: {
+        display: false 
+      }
+    },
+    y: {
+      beginAtZero: true,
+      grace: "10%", 
+      ticks: {
+        callback: (value) => value.toLocaleString("vi-VN") + " đ",
       },
     },
-    scales: {
-      y: {
-        beginAtZero: true,
-        grace: "15%",
-        ticks: {
-          callback: (value) => value.toLocaleString("vi-VN") + " đ",
-        },
-      },
-    },
-  };
+  },
+};
 
   const otherChartOptions = {
     responsive: true,
@@ -413,9 +487,18 @@ export default function Dashboard() {
         font: {
           size: 10,
         },
-        formatter: (value) => {
-          if (!value) return "0 VND";
-          return value.toLocaleString("vi-VN") + " VND"; // Thêm đơn vị VND
+        scales: {
+          x: {
+            stacked: true, // Bật xếp chồng cho trục X
+          },
+          y: {
+            stacked: true, // Bật xếp chồng cho trục Y
+            ticks: {
+              callback: function(value) {
+                return value.toLocaleString() + ' VND'; // Định dạng hiển thị tiền
+              }
+            }
+          },
         },
       },
       legend: {
@@ -432,6 +515,7 @@ export default function Dashboard() {
     );
   }
 
+  
   return (
     <div style={styles.dashboardContainer}>
       {/* 2. KHU VỰC NỘI DUNG CHÍNH (CONTENT AREA) */}
@@ -470,7 +554,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* KHỐI GRID CHỨA BẢNG ĐIỀU KHIỂN & CÁ C BIỂU ĐỒ */}
+        {/* KHỐI GRID CHỨA BẢNG ĐIỀU KHIỂN & CÁC BIỂU ĐỒ */}
         <div style={styles.dashboardGrid}>
           {/* Ô BẢNG ĐIỀU KHIỂN BỘ LỌC (NĂM / THÁNG) */}
           <div style={styles.card}>
@@ -528,7 +612,7 @@ export default function Dashboard() {
               Biểu đồ thể hiện thu chi theo danh mục
             </h4>
             <div style={styles.chartHolder}>
-              <Line
+              <Bar
                 data={lineChartData}
                 options={lineChartOptions}
               />
@@ -554,7 +638,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-
           <div style={{ ...styles.card, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
             <h4 style={{ ...styles.cardTitle, color: "#1e293b" }}>💡 Phân tích & Gợi ý (Insight)</h4>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "10px" }}>
@@ -578,18 +661,20 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-
-
-          {/* BIỂU ĐỒ CỘT SO SÁNH TỔNG QUAN */}
+          
           <div style={{ ...styles.card, flex: 1.5 }}>
             <h4 style={styles.cardTitle}>Cân đối Thu nhập & Chi tiêu</h4>
             <div style={styles.chartHolder}>
-              <Bar
-                data={barChartData}
-                options={otherChartOptions}
-              />
+              {chartData503020 ? (
+                <Bar data={chartData503020} options={otherChartOptions} />
+              ) : (
+                <p style={{ fontSize: "11px", color: "#64748b", textAlign: "center", paddingTop: "40px" }}>
+                  Đang tải dữ liệu.....
+                </p>
+              )}
             </div>
           </div>
+
         </div>
 
         {/* KHU VỰC GIÁM SÁT NGÂN SÁCH DANH MỤC */}

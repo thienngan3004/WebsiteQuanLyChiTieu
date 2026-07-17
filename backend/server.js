@@ -30,6 +30,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use("/api/ai", aiRoutes);
+app.use('/api/dashboard', dashboardRoutes)
 
 app.get('/', (req, res) => {
     res.send('Trang web đang chạy ổn định...');

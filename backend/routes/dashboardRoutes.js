@@ -72,4 +72,90 @@ router.get("/reports-data", authMiddleware, async (req, res) => {
     }
 });
 
+router.get("/balance-503020", authMiddleware , async (req, res) => {
+    // Giả sử ông đang lấy userId từ middleware xác thực hoặc hardcode để test (ví dụ: userId = 3 dựa theo log lỗi)
+    const userId = req.user?.id || 3; 
+  
+    try {
+      // 1. Tính tổng thu nhập (type = 'income') trong tháng hiện tại của User
+      const [incomeRes] = await db.query(
+        `SELECT SUM(amount) as total 
+         FROM transactions 
+         WHERE user_id = ? AND type = 'income' AND MONTH(date) = MONTH(NOW()) AND YEAR(date) = YEAR(NOW())`,
+        [userId]
+      );
+      const totalIncome = parseFloat(incomeRes[0].total) || 0;
+  
+      // 2. Lấy tất cả khoản chi (type = 'expense') trong tháng kèm theo tên danh mục để phân loại linh động
+      const [expenseRes] = await db.query(
+        `SELECT t.amount, c.name as category_name 
+         FROM transactions t 
+         JOIN categories c ON t.category_id = c.id 
+         WHERE t.user_id = ? AND t.type = 'expense' AND MONTH(t.date) = MONTH(NOW()) AND YEAR(t.date) = YEAR(NOW())`,
+        [userId]
+      );
+  
+      let thietYeu = 0; // Nhóm Needs (50%)
+      let soThich = 0;  // Nhóm Wants (30%)
+  
+      // 3. Quét qua từng dòng dữ liệu thật dưới DB để phân loại bằng từ khóa (lowercase để tránh lệch chữ hoa/thường)
+      expenseRes.forEach(row => {
+        const categoryName = row.category_name ? row.category_name.toLowerCase() : "";
+        const amount = parseFloat(row.amount) || 0;
+        
+        // Nhóm Thiết yếu (Needs): Ăn uống, ăn sáng, gia đình, hóa đơn, nhà cửa, điện nước...
+        if (
+          categoryName.includes("ăn uống") || 
+          categoryName.includes("ăn sáng") || 
+          categoryName.includes("gia đình") || 
+          categoryName.includes("sinh hoạt")
+        ) {
+          thietYeu += amount;
+        } 
+        // Nhóm Sở thích / Hưởng thụ (Wants): Mua sắm, bạn bè, giải trí, du lịch, mỹ phẩm, quần áo...
+        else if (
+          categoryName.includes("mua sắm") || 
+          categoryName.includes("bạn bè") || 
+          categoryName.includes("giải trí") || 
+          categoryName.includes("mỹ phẩm")
+        ) {
+          soThich += amount;
+        } 
+        // Các danh mục phát sinh khác (ví dụ: quyên góp, học tập...) nếu ông muốn xếp vào nhóm hưởng thụ/khác
+        else {
+          soThich += amount; 
+        }
+      });
+  
+      // 4. Tính toán Tích lũy / Số dư thực tế còn lại (Savings - 20%)
+      // Lấy Tổng thu nhập trừ đi tổng tất cả các khoản chi thực tế trong tháng
+      const tongChiThucTe = thietYeu + soThich;
+      const soDuThucTe = totalIncome - tongChiThucTe;
+  
+      // 5. Trả kết quả JSON chuẩn chỉnh về cho Frontend dựng cột biểu đồ
+      res.json({
+        success: true,
+        data: {
+          totalIncome: totalIncome,
+          // Hạn mức lý thuyết (Chuẩn 50/30/20 tính dựa trên tổng thu nhập thực tế)
+          targetNeeds: totalIncome * 0.5,
+          targetWants: totalIncome * 0.3,
+          targetSavings: totalIncome * 0.2,
+          // Số liệu chi tiêu thực tế bốc từ Database lên
+          realNeeds: thietYeu,
+          realWants: soThich,
+          realSavings: soDuThucTe > 0 ? soDuThucTe : 0 // Nếu chi tiêu vượt quá thu nhập (âm tiền) thì hiển thị số dư bằng 0 để tránh biểu đồ bị méo tụt xuống dưới
+        }
+      });
+  
+    } catch (error) {
+      console.error("Lỗi API 50/30/20:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Có lỗi xảy ra khi tính toán dữ liệu cân đối tài chính.",
+        error: error.message 
+      });
+    }
+  });
+
 module.exports = router;
