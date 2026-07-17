@@ -146,6 +146,32 @@ export default function Reports() {
     }
   };
 
+  const otherChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      datalabels: {
+        display: true,
+        color: "#ffffff",         
+        borderRadius: 4,
+        padding: 4,
+        anchor: "center",
+        align: "center",
+        font: {
+          size: 10,
+        },
+        formatter: (value) => {
+          if (!value) return "0 VND";
+          return value.toLocaleString("vi-VN") + " VND"; // Thêm đơn vị VND
+        },
+      },
+      legend: {
+        display: true,
+        position: "top",
+      },
+    },
+  };
+
   return (
     <div style={styles.container}>
       {/* 1. TIÊU ĐỀ & NÚT XUẤT FILE */}
@@ -219,7 +245,7 @@ export default function Reports() {
             {reportData.chart?.labels?.length > 0 ? (
               <Doughnut
                 data={pieChartConfig}
-                options={{ responsive: true, maintainAspectRatio: false }}
+                options={otherChartOptions}
               />
             ) : (
               <p style={{ color: "#9ca3af", fontStyle: "italic" }}>

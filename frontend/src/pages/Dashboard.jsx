@@ -13,6 +13,7 @@ import {
   Title,
 } from "chart.js";
 import { Pie, Line, Bar } from "react-chartjs-2";
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 
 ChartJS.register(
   ArcElement,
@@ -23,7 +24,8 @@ ChartJS.register(
   BarElement,
   PointElement,
   LineElement,
-  Title
+  Title,
+  ChartDataLabels
 );
 
 export default function Dashboard() {
@@ -42,6 +44,11 @@ export default function Dashboard() {
   });
 
   const [categories, setCategories] = useState([]);
+
+  //Thêm các State quản lý Popup & Insight
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [showPopup, setShowPopup] = useState(false);
+  const [categoryDetails, setCategoryDetails] = useState([]);
 
   const fetchCategories = async () => {
     try {
@@ -263,17 +270,14 @@ export default function Dashboard() {
     return acc;
   }, {});
 
+  const categoryNames = Object.keys(expenseCategoryTotals);
+  const categoryAmounts = Object.values(expenseCategoryTotals);
+
   const expensePieChartData = {
-    labels:
-      Object.keys(expenseCategoryTotals).length > 0
-        ? Object.keys(expenseCategoryTotals)
-        : ["Trống"],
+    labels: categoryNames.length > 0 ? categoryNames : ["Trống"],
     datasets: [
       {
-        data:
-          Object.values(expenseCategoryTotals).length > 0
-            ? Object.values(expenseCategoryTotals)
-            : [1],
+        data: categoryAmounts.length > 0 ? categoryAmounts : [1],
         backgroundColor: [
           "#ef4444",
           "#f97316",
@@ -284,6 +288,69 @@ export default function Dashboard() {
         ],
       },
     ],
+  };
+
+  // Cấu hình Options cho Pie Chart (Giữ nguyên phần click + hiển thị % như cũ)
+  const expensePieChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    events: ['mousemove', 'mouseout', 'click', 'touchstart'],
+    plugins: {
+      legend: {
+        position: "bottom",
+        labels: {
+          padding: 8,
+          font: { size: 11 },
+        },
+      },
+      datalabels: {
+        display: true,
+        color: "#ffffff",
+        anchor: "center",
+        align: "center",  
+        offset: 0,
+        font: {
+          weight: "bold",
+          size: 12,
+        },
+        formatter: (value) => {
+          if (totalExpense === 0) return "";
+          const percentage = ((value / totalExpense) * 100).toFixed(1);
+          return percentage > 5 ? `${percentage}%` : ""; 
+        },
+      },
+      tooltip: {
+        enabled: true,
+        callbacks: {
+          label: function (context) {
+            const value = context.raw;
+            const percentage = totalExpense > 0 ? ((value / totalExpense) * 100).toFixed(1) : 0;
+            return ` Số tiền: ${value.toLocaleString("vi-VN")} VND (${percentage}%)`;
+          },
+        },
+      },
+    },
+    onClick: (event, elements, chart) => {
+
+      console.log("Đang click vào biểu đồ tròn..."); //debug
+
+      if (elements && elements.length > 0) {
+        const index = elements[0].index;
+        const clickedCategory = categoryNames[index];
+
+        console.log("Danh mục click trúng:", clickedCategory); //debug
+        
+        const details = expenses.filter(
+          (t) => (t.category_name || "Chưa phân loại") === clickedCategory
+        );
+        
+        setSelectedCategory(clickedCategory);
+        setCategoryDetails(details);
+        setShowPopup(true);
+      } else {
+        console.log("Không click trúng phân vùng nào trên biểu đồ tròn."); //debug
+      }
+    },
   };
 
   // 3. Biểu đồ Cột dọc: So sánh nhanh Thu - Chi - Số dư
@@ -297,6 +364,67 @@ export default function Dashboard() {
       },
     ],
   };
+
+  const lineChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      datalabels: {
+        display: true,
+        color: "black",         
+        anchor: "end", 
+        align: "top",  
+        offset: -3,
+        font: {
+          size: 10,
+        },
+        formatter: (value) => {
+          if (!value) return "0 VND";
+          return value.toLocaleString("vi-VN") + " VND"; 
+        },
+      },
+      legend: {
+        display: true,
+        position: "top",
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        grace: "15%",
+        ticks: {
+          callback: (value) => value.toLocaleString("vi-VN") + " đ",
+        },
+      },
+    },
+  };
+
+  const otherChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      datalabels: {
+        display: true,
+        color: "#ffffff",         
+        borderRadius: 4,
+        padding: 4,
+        anchor: "center",
+        align: "center",
+        font: {
+          size: 10,
+        },
+        formatter: (value) => {
+          if (!value) return "0 VND";
+          return value.toLocaleString("vi-VN") + " VND"; // Thêm đơn vị VND
+        },
+      },
+      legend: {
+        display: true,
+        position: "top",
+      },
+    },
+  };
+
 
   if (loading) {
     return (
@@ -402,7 +530,7 @@ export default function Dashboard() {
             <div style={styles.chartHolder}>
               <Line
                 data={lineChartData}
-                options={{ responsive: true, maintainAspectRatio: false }}
+                options={lineChartOptions}
               />
             </div>
           </div>
@@ -416,12 +544,41 @@ export default function Dashboard() {
           </div> */}
 
           {/* BIỂU ĐỒ TRÒN KHOẢN chi */}
-          <div style={styles.card}>
+          <div style={{ ...styles.card, position: 'relative' }}>
             <h4 style={styles.cardTitle}>Khoản chi theo Danh mục</h4>
+            <p style={{ fontSize: "11px", color: "#6b7280", margin: "-6px 0 8px 0" }}>
+              * Chú thích: Click vào các phân vùng màu sắc để xem nguồn tiền và chi tiết giao dịch.
+            </p>
             <div style={styles.chartHolder}>
-              <Pie data={expensePieChartData} />
+              <Pie data={expensePieChartData} options={expensePieChartOptions} />
             </div>
           </div>
+
+
+          <div style={{ ...styles.card, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+            <h4 style={{ ...styles.cardTitle, color: "#1e293b" }}>💡 Phân tích & Gợi ý (Insight)</h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "10px" }}>
+              {totalExpense > 0 ? (
+                <>
+                  <div style={{ padding: "10px", backgroundColor: "#eff6ff", borderRadius: "8px", borderLeft: "4px solid #3b82f6" }}>
+                    <p style={{ fontSize: "12px", fontWeight: "bold", color: "#1e40af", margin: "0 0 4px 0" }}>Khoản chi tiêu lớn nhất:</p>
+                    <p style={{ fontSize: "11px", color: "#1e3a8a", margin: 0 }}>
+                      Nhóm <span style={{ fontWeight: "bold", color: "#ef4444" }}>"{categoryNames[categoryAmounts.indexOf(Math.max(...categoryAmounts))]}"</span> đang chiếm tỷ trọng lớn nhất với tổng chi <strong>{Math.max(...categoryAmounts).toLocaleString("vi-VN")} VND</strong>.
+                    </p>
+                  </div>
+                  <div style={{ padding: "10px", backgroundColor: "#fffbeb", borderRadius: "8px", borderLeft: "4px solid #f59e0b" }}>
+                    <p style={{ fontSize: "12px", fontWeight: "bold", color: "#92400e", margin: "0 0 4px 0" }}>Gợi ý quản lý ví:</p>
+                    <p style={{ fontSize: "11px", color: "#78350f", margin: 0 }}>
+                      Bạn nên phân bổ lại ngân sách hoặc đặt hạn mức chi tiêu cho các hoạt động giải trí, mua sắm để duy trì số dư ổn định cuối tháng.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <p style={{ fontSize: "12px", color: "#64748b" }}>Chưa phát hiện giao dịch chi tiêu nào trong tháng để phân tích.</p>
+              )}
+            </div>
+          </div>
+
 
           {/* BIỂU ĐỒ CỘT SO SÁNH TỔNG QUAN */}
           <div style={{ ...styles.card, flex: 1.5 }}>
@@ -429,7 +586,7 @@ export default function Dashboard() {
             <div style={styles.chartHolder}>
               <Bar
                 data={barChartData}
-                options={{ responsive: true, maintainAspectRatio: false }}
+                options={otherChartOptions}
               />
             </div>
           </div>
@@ -768,13 +925,143 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      {/* ==================== POPUP CHI TIẾT GIAO DỊCH (MODAL DÀNH CHO DASHBOARD) ==================== */}
+      {showPopup && (
+        <div style={localStyles.modalOverlay}>
+          <div style={localStyles.modalContent}>
+            <div style={localStyles.modalHeader}>
+              <h3 style={localStyles.modalTitle}>
+                Chi tiết: <span style={{ color: "#ef4444" }}>{selectedCategory}</span>
+              </h3>
+              <button style={localStyles.closeBtn} onClick={() => setShowPopup(false)}>
+                &times;
+              </button>
+            </div>
+            
+            <div style={localStyles.modalBody}>
+              {categoryDetails.length > 0 ? (
+                categoryDetails.map((t, idx) => {
+                  // Việt hóa tên nguồn tiền hiển thị chuẩn xác
+                  let sourceText = "Tiền mặt";
+                  if (t.source_type === "wallet" || t.source_type === "e-wallet") sourceText = "Ví điện tử";
+                  if (t.source_type === "card") sourceText = "Thẻ ngân hàng";
+
+                  return (
+                    <div key={idx} style={localStyles.itemCard}>
+                      <div style={{ flex: 1 }}>
+                        <p style={localStyles.itemDate}>
+                          {t.date || t.transaction_date ? new Date(t.date || t.transaction_date).toLocaleDateString("vi-VN") : "Không rõ ngày"}
+                        </p>
+                        <p style={localStyles.itemDesc}>{t.description || "Không có ghi chú"}</p>
+                        <span style={{
+                          ...localStyles.badge,
+                          backgroundColor: t.source_type === "wallet" || t.source_type === "e-wallet" ? "#f3e8ff" : t.source_type === "card" ? "#dbeafe" : "#f3f4f6",
+                          color: t.source_type === "wallet" || t.source_type === "e-wallet" ? "#7e22ce" : t.source_type === "card" ? "#1d4ed8" : "#374151"
+                        }}>
+                          Nguồn: {sourceText}
+                        </span>
+                      </div>
+                      <span style={localStyles.itemAmount}>
+                        -{Number(t.amount).toLocaleString("vi-VN")} đ
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <p style={{ textAlign: "center", color: "#9ca3af" }}>Không tìm thấy lịch sử chi tiết.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ==========================================
-// HỆ THỐNG STYLE SHEET SẠCH SẼ THEO MẪU XỊN
-// ==========================================
+// DÁN ĐOẠN NÀY VÀO CUỐI CÙNG CỦA FILE DASHBOARD.JSX (BÊN NGOÀI HÀM COMPONENT)
+const localStyles = {
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999, // Đảm bảo nổi hẳn lên trên cùng các biểu đồ
+  },
+  modalContent: {
+    backgroundColor: "#ffffff",
+    borderRadius: "16px",
+    padding: "20px",
+    width: "90%",
+    maxWidth: "420px",
+    boxShadow: "0 15px 30px rgba(0,0,0,0.25)",
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottom: "1px solid #f1f5f9",
+    paddingBottom: "10px",
+    marginBottom: "15px",
+  },
+  modalTitle: {
+    fontSize: "16px",
+    fontWeight: "700",
+    color: "#1e293b",
+    margin: 0,
+  },
+  closeBtn: {
+    background: "none",
+    border: "none",
+    fontSize: "26px",
+    color: "#94a3b8",
+    cursor: "pointer",
+    lineHeight: "1",
+  },
+  modalBody: {
+    maxHeight: "280px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  itemCard: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px",
+    backgroundColor: "#f8fafc",
+    borderRadius: "10px",
+    border: "1px solid #f1f5f9",
+  },
+  itemDate: {
+    fontSize: "10px",
+    color: "#64748b",
+    margin: "0 0 3px 0",
+  },
+  itemDesc: {
+    fontSize: "13px",
+    fontWeight: "600",
+    color: "#334155",
+    margin: "0 0 5px 0",
+  },
+  itemAmount: {
+    fontSize: "14px",
+    fontWeight: "700",
+    color: "#e11d48",
+  },
+  badge: {
+    fontSize: "9px",
+    fontWeight: "700",
+    padding: "2px 6px",
+    borderRadius: "10px",
+  }
+};
+
 const styles = {
   dashboardContainer: {
     display: "flex",
@@ -871,6 +1158,8 @@ const styles = {
     borderRadius: "12px",
     boxShadow: "0 4px 6px rgba(0,0,0,0.03)",
     minWidth: "300px",
+    position: "relative",
+    zIndex: 1,
     boxSizing: "border-box",
   },
   cardTitle: {
@@ -921,8 +1210,10 @@ const styles = {
     borderColor: "#2563eb",
   },
   chartHolder: {
+    position: "relative",
     width: "100%",
     height: "240px",
+    cursor: "pointer",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",

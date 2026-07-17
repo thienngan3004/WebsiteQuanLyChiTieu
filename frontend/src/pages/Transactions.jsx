@@ -63,7 +63,7 @@ function Transactions() {
 
       // Gọi API bằng phương thức POST lên backend
       const response = await axios.post(
-        'http://localhost:5000/api/assistant/chat', 
+        'http://localhost:5000/api/ai', 
         { message: userMessage },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -335,6 +335,7 @@ function Transactions() {
     fetchBudgetWarnings();
   }, []);
 
+  
   return (
     <div style={styles.container}>
       <h2 style={styles.pageTitle}>Quản Lý Giao Dịch Tài Chính</h2>
@@ -452,6 +453,7 @@ function Transactions() {
             <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nguồn thanh toán / Nhận tiền</label>
               <select 
+                name="source_type"
                 value={formData.source_type} 
                 onChange={(e) => setFormData({...formData, source_type: e.target.value})}
                 className="w-full p-2 border rounded-md"
