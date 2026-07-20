@@ -13,18 +13,41 @@ function Transactions() {
     category_id: 1, // Tạm thời mặc định nhóm 1 (ví dụ: Ăn uống)
     date: new Date().toISOString().split("T")[0], // Mặc định lấy ngày hôm nay
     description: "",
+    source_type: "cash",
   });
 
   const [categories, setCategories] = useState([]);
   // State quản lý ô nhập khi tạo danh mục mới
   const [newCategoryName, setNewCategoryName] = useState("");
 
+  // 1. Các State quản lý ẩn/hiện Popup và dữ liệu Form ngân sách
+  const [isOpenBudgetModal, setIsOpenBudgetModal] = useState(false);
+  const [budgetWarnings, setBudgetWarnings] = useState([]);
+  const [budgetFormData, setBudgetFormData] = useState({
+    category_id: "",
+    amount: "",
+  });
+
+  // State quản lý Chatbot AI
+  const [messages, setMessages] = useState([
+    {
+      sender: "ai",
+      text: "Xin chào! Tôi là cố vấn tài chính thông minh của bạn.",
+    },
+  ]);
+  const [inputValue, setInputValue] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // ==========================================
+  // CÁC HÀM GỌI API (FETCH DATA)
+  // ==========================================
+  
   // Hàm lấy danh mục thật từ DB về
   const fetchCategories = async () => {
     try {
       const token = localStorage.getItem("token"); // Lấy token thật
       const response = await axios.get("http://localhost:5000/api/categories", {
-        headers: { Authorization: `Bearer ${token}` }, // <-- Đính kèm token gác cổng
+        headers: { Authorization: `Bearer ${token}` },
       });
       setCategories(response.data);
     } catch (error) {
@@ -32,77 +55,12 @@ function Transactions() {
     }
   };
 
-  const [messages, setMessages] = useState([
-    {
-      sender: "ai",
-      text: "Xin chào! Tôi là cố vấn tài chính thông minh của bạn.",
-    },
-  ]);
-
-  // 2. State lưu nội dung ô nhập liệu
-  const [inputValue, setInputValue] = useState("");
-
-  // 3. State quản lý trạng thái chờ AI phản hồi (Loading)
-  const [loading, setLoading] = useState(false);
-
-  // 4. Hàm xử lý gửi tin nhắn
-  const handleSendMessage = async (e) => {
-    e.preventDefault(); // Chặn reload trang khi submit form
-    if (!inputValue.trim() || loading) return; // Nếu ô nhập trống hoặc đang load thì bỏ qua
-
-    const userMessage = inputValue.trim();
-
-    // Cập nhật tin nhắn của người dùng lên màn hình trước, rồi xóa trống ô nhập
-    setMessages((prev) => [...prev, { sender: "user", text: userMessage }]);
-    setInputValue("");
-    setLoading(true);
-
-    try {
-      // Lấy token đăng nhập từ localStorage để vượt qua authMiddleware ở backend
-      const token = localStorage.getItem("token");
-
-      // Gọi API bằng phương thức POST lên backend
-      const response = await axios.post(
-        'http://localhost:5000/api/ai', 
-        { message: userMessage },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      // Nhận phản hồi từ Gemini và cập nhật vào danh sách tin nhắn
-      if (response.data && response.data.reply) {
-
-        const cleanReply = response.data.reply.replace(/\*\*/g, "");
-
-        setMessages((prev) => [
-          ...prev,
-          { sender: "ai", text: cleanReply },
-        ]);
-      }
-    } catch (error) {
-      console.error("Lỗi gửi tin nhắn chatbot:", error);
-      const serverErrorMessage = error.response?.data?.error || "Trợ lý AI đang bận, vui lòng thử lại sau nhé!";
-      setMessages((prev) => [
-        ...prev,
-        { sender: "ai", text: serverErrorMessage},
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Chỉnh sửa lại useEffect để khi vào trang nó tải cả Giao dịch và Danh mục luôn
-  useEffect(() => {
-    fetchTransactions();
-    fetchCategories(); // <-- Gọi hàm này
-  }, []);
-  // 2. Hàm gọi API lấy danh sách giao dịch từ Backend (Read trong CRUD)
+  // Hàm gọi API lấy danh sách giao dịch từ Backend
   const fetchTransactions = async () => {
     try {
       const token = localStorage.getItem("token");
       const response = await axios.get("http://localhost:5000/api/transactions", {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       });
       setTransactions(response.data); // Đổ dữ liệu thật vào state để render ra bảng
     } catch (error) {
@@ -111,12 +69,33 @@ function Transactions() {
     }
   };
 
-  // Tự động chạy hàm fetchTransactions ngay khi người dùng vừa truy cập vào trang
+  // Hàm lấy danh sách cảnh báo ngân sách từ Backend
+  const fetchBudgetWarnings = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.get(
+        "http://localhost:5000/api/budgets/check-warnings",
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        setBudgetWarnings(response.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy cảnh báo ngân sách:", error);
+    }
+  };
+
+  // GỘP TẤT CẢ VÀO MỘT USEEFFECT DUY NHẤT KHI VÀO TRANG TRÁNH TRÙNG LẶP
   useEffect(() => {
     fetchTransactions();
+    fetchCategories(); 
+    fetchBudgetWarnings();
   }, []);
 
-  // 3. Hàm xử lý thay đổi dữ liệu khi gõ vào các ô Input của Form
+  // ==========================================
+  // LOGIC XỬ LÝ FORM GIAO DỊCH
+  // ==========================================
+  
   const handleInputChange = (e) => {
     const { name, value } = e.target;
 
@@ -135,7 +114,7 @@ function Transactions() {
     }
   };
 
-  // 4. Hàm xử lý gửi dữ liệu Form lên Backend để lưu vào DB (Create trong CRUD)
+  // Hàm xử lý gửi dữ liệu Form lên Backend để lưu vào DB (Đã sửa lỗi ngoặc + thêm bộ chặn)
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -149,20 +128,46 @@ function Transactions() {
       return;
     }
 
+    const selectedCatId = formData.category_id; 
+    const newAmount = Number(formData.amount);
+    const transactionType = formData.type; 
+
+    // 🌟 VÒNG KIỂM TRA FRONT-END: CHẶN VƯỢT HẠN MỨC NGÂN SÁCH
+    if (transactionType === "expense") {
+      const matchingBudget = budgetWarnings?.find(b => String(b.category_id) === String(selectedCatId));
+
+      if (matchingBudget) {
+        const limit = Number(matchingBudget.budget_limit);
+        const currentSpent = Number(matchingBudget.total_spent);
+        
+        if (currentSpent + newAmount > limit) {
+          alert(
+            `🚫 KHOẢN CHI VƯỢT QUÁ HẠN MỨC CHO PHÉP!\n\n` +
+            `- Danh mục: ${matchingBudget.category_name}\n` +
+            `- Hạn mức tháng này: ${limit.toLocaleString("vi-VN")}đ\n` +
+            `- Đã chi tiêu: ${currentSpent.toLocaleString("vi-VN")}đ\n` +
+            `- Dự kiến thêm: ${newAmount.toLocaleString("vi-VN")}đ\n\n` +
+            `Hệ thống không cho phép thực hiện. Vui lòng chỉnh sửa lại số tiền phù hợp hoặc tăng hạn mức ngân sách của danh mục này!`
+          );
+          return; // 🛑 Ngắt hoàn toàn tiến trình
+        }
+      }
+    }
+
+    // Gửi API nếu hợp lệ
     try {
       const token = localStorage.getItem("token");
       const response = await axios.post(
         "http://localhost:5000/api/transactions",
         {
-          amount: Number(formData.amount),
-          type: formData.type,
-          category_id: Number(formData.category_id),
+          amount: newAmount,
+          type: transactionType,
+          category_id: Number(selectedCatId),
           date: formData.date,
           description: formData.description,
+          source_type: formData.source_type || 'cash'
         },
-        {
-          headers: { Authorization: `Bearer ${token}` }, // <-- Đính kèm token
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (response.data.success) {
@@ -173,19 +178,23 @@ function Transactions() {
           category_id: formData.category_id,
           date: new Date().toISOString().split("T")[0],
           description: "",
+          source_type: "cash"
         });
         fetchTransactions();
+        fetchBudgetWarnings(); // Cập nhật lại thanh tiến độ ngân sách ngay lập tức
       }
     } catch (error) {
       console.error("Lỗi thêm giao dịch:", error);
-      alert("Lỗi hệ thống, không lưu được giao dịch!");
+      if (error.response && error.response.data && error.response.data.isOverBudget) {
+        alert(error.response.data.error);
+      } else {
+        alert("Lỗi hệ thống, không lưu được giao dịch!");
+      }
     }
   };
 
-  
   // Hàm xử lý tạo danh mục động mới từ giao diện
   const handleCreateCategory = async () => {
-    // 1. Kiểm tra dữ liệu đầu vào
     if (!newCategoryName || !newCategoryName.trim()) {
       alert("Vui lòng nhập tên danh mục!");
       return;
@@ -198,16 +207,8 @@ function Transactions() {
         return;
       }
 
-      // 2. Lấy CHÍNH XÁC type từ formData của form đang chọn ('expense' hoặc 'income')
       const currentType = formData.type;
 
-      console.log("=== BẮT ĐẦU GỬI API ===");
-      console.log("Dữ liệu gửi đi:", {
-        name: newCategoryName.trim(),
-        type: currentType,
-      });
-
-      // 3. Gọi API POST thực sự
       const response = await axios.post(
         "http://127.0.0.1:5000/api/categories",
         {
@@ -222,39 +223,31 @@ function Transactions() {
         }
       );
 
-      console.log("Phản hồi từ Backend:", response);
-
-      // 4. Kiểm tra mã trạng thái 201 từ Backend mới của tụi mình
       if (response.status === 201 || response.data?.category) {
         alert(`Đã thêm danh mục "${newCategoryName}" thành công!`);
-        setNewCategoryName(""); // Xóa rỗng ô input
-
-        // 5. Gọi hàm fetch lại danh sách danh mục để dropdown cập nhật
-        // Ní check xem ở trên ní định nghĩa hàm lấy danh mục tên là gì (fetchCategories hoặc getCategories...)
-        if (typeof fetchCategories === "function") {
-          await fetchCategories();
-        } else if (typeof getCategories === "function") {
-          await getCategories();
-        }
+        setNewCategoryName(""); 
+        await fetchCategories();
       }
     } catch (error) {
-      console.error("Lỗi chí mạng khi gọi API POST:", error);
-      const errorMsg =
-        error.response?.data?.message || "Không thể kết nối đến máy chủ.";
+      console.error("Lỗi khi gọi API POST danh mục:", error);
+      const errorMsg = error.response?.data?.message || "Không thể kết nối đến máy chủ.";
       alert(`Lỗi: ${errorMsg}`);
     }
   };
 
-  // 5. Hàm xóa giao dịch thật (Delete trong CRUD)
+  // Hàm xóa giao dịch thật (Delete trong CRUD)
   const handleDelete = async (id) => {
     if (window.confirm("Bạn có chắc chắn muốn xóa giao dịch này không?")) {
       try {
+        const token = localStorage.getItem("token");
         const response = await axios.delete(
-          `http://localhost:5000/api/transactions/${id}`
+          `http://localhost:5000/api/transactions/${id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.data.success) {
           alert("Đã xóa giao dịch thành công!");
-          fetchTransactions(); // Cập nhật lại giao diện bảng
+          fetchTransactions(); 
+          fetchBudgetWarnings(); // Reload lại ngân sách vì đã bớt tiền chi tiêu
         }
       } catch (error) {
         console.error("Lỗi xóa giao dịch:", error);
@@ -263,79 +256,46 @@ function Transactions() {
     }
   };
 
-  // 1. Các State quản lý ẩn/hiện Popup và dữ liệu Form ngân sách
-  const [isOpenBudgetModal, setIsOpenBudgetModal] = useState(false);
-  const [budgetWarnings, setBudgetWarnings] = useState([]);
-  const [budgetFormData, setBudgetFormData] = useState({
-    category_id: "",
-    amount: "",
-  });
+  // ==========================================
+  // CHATBOT AI LOGIC
+  // ==========================================
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!inputValue.trim() || loading) return;
 
-  // 2. Hàm lấy danh sách cảnh báo ngân sách từ Backend
-  const fetchBudgetWarnings = async () => {
+    const userMessage = inputValue.trim();
+    setMessages((prev) => [...prev, { sender: "user", text: userMessage }]);
+    setInputValue("");
+    setLoading(true);
+
     try {
       const token = localStorage.getItem("token");
-      const response = await axios.get(
-        "http://localhost:5000/api/budgets/check-warnings",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      const response = await axios.post(
+        'http://localhost:5000/api/ai', 
+        { message: userMessage },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      if (response.data.success) {
-        setBudgetWarnings(response.data.data);
+
+      if (response.data && response.data.reply) {
+        const cleanReply = response.data.reply.replace(/\*\*/g, "");
+        setMessages((prev) => [...prev, { sender: "ai", text: cleanReply }]);
+        
+        // Nếu Backend báo là AI vừa thêm mới một giao dịch thành công vào DB
+        if (response.data.inserted || response.data.refreshRequired) {
+          fetchTransactions();     // Tải lại bảng lịch sử giao dịch
+          fetchBudgetWarnings();   // Cập nhật ngay tiến độ và cảnh báo ngân sách!
+        }
       }
     } catch (error) {
-      console.error("Lỗi lấy cảnh báo ngân sách:", error);
+      console.error("Lỗi gửi tin nhắn chatbot:", error);
+      const serverErrorMessage = error.response?.data?.error || "Trợ lý AI đang bận, vui lòng thử lại sau nhé!";
+      setMessages((prev) => [...prev, { sender: "ai", text: serverErrorMessage}]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 3. Hàm gửi dữ liệu POST lên API khi bấm Lưu hạn mức
-  const handleCreateBudget = async (e) => {
-    e.preventDefault();
-    if (!budgetFormData.category_id || !budgetFormData.amount) {
-      alert("Vui lòng nhập đầy đủ thông tin!");
-      return;
-    }
-    try {
-      const token = localStorage.getItem("token");
-      const currentMonth = new Date().getMonth() + 1;
-      const currentYear = new Date().getFullYear();
-
-      await axios.post(
-        "http://localhost:5000/api/budgets",
-        {
-          category_id: parseInt(budgetFormData.category_id),
-          amount: parseFloat(budgetFormData.amount),
-          month: currentMonth,
-          year: currentYear,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      alert("Đặt hạn mức thành công!");
-      setIsOpenBudgetModal(false);
-      setBudgetFormData({ category_id: "", amount: "" });
-      fetchBudgetWarnings();
-    } catch (error) {
-      console.error("Lỗi tạo ngân sách:", error);
-      alert(error.response?.data?.message || "Có lỗi xảy ra khi đặt hạn mức.");
-    }
-  };
-
-  // 4. Kích hoạt gọi cả 2 hàm khi vừa tải trang Dashboard
-  useEffect(() => {
-    fetchBudgetWarnings();
-    fetchCategories(); // 🌟 Chạy hàm này để nạp dữ liệu cho select option
-  }, []);
-
-  // 4. Tự động chạy lấy dữ liệu khi người dùng vừa mở màn hình Dashboard
-  useEffect(() => {
-    fetchBudgetWarnings();
-  }, []);
-
-  
+  // Giữ nguyên phần Return giao diện (UI) của bạn bên dưới...
   return (
     <div style={styles.container}>
       <h2 style={styles.pageTitle}>Quản Lý Giao Dịch Tài Chính</h2>
@@ -358,7 +318,7 @@ function Transactions() {
               />
             </div>
 
-            {/* Loại giao dịch (Đã xử lý reset danh mục khi loại thay đổi) */}
+            {/* Loại giao dịch */}
             <div style={styles.inputGroup}>
               <label style={styles.label}>Loại giao dịch</label>
               <select
@@ -366,7 +326,6 @@ function Transactions() {
                 value={formData.type}
                 onChange={(e) => {
                   handleInputChange(e);
-                  // 🔑 BƯỚC QUAN TRỌNG: Khi đổi loại, reset ngay category_id về rỗng để tránh gửi nhầm ID khóa ngoại loại cũ
                   setFormData((prev) => ({
                     ...prev,
                     type: e.target.value,
@@ -413,9 +372,7 @@ function Transactions() {
                 border: "1px dashed #cbd5e1",
               }}
             >
-              <label
-                style={{ ...styles.label, fontSize: "12px", color: "#64748b" }}
-              >
+              <label style={{ ...styles.label, fontSize: "12px", color: "#64748b" }}>
                 💡 Tạo nhanh danh mục mới cho loại này:
               </label>
               <div style={{ display: "flex", gap: "8px", marginTop: "5px" }}>
@@ -450,13 +407,14 @@ function Transactions() {
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nguồn thanh toán / Nhận tiền</label>
+            {/* Nguồn tiền */}
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Nguồn thanh toán / Nhận tiền</label>
               <select 
                 name="source_type"
                 value={formData.source_type} 
                 onChange={(e) => setFormData({...formData, source_type: e.target.value})}
-                className="w-full p-2 border rounded-md"
+                style={styles.input}
               >
                 <option value="cash">Tiền mặt</option>
                 <option value="card">Thẻ ngân hàng (ATM/Visa)</option>
@@ -489,7 +447,6 @@ function Transactions() {
               />
             </div>
 
-            {/* Nút submit */}
             <button type="submit" style={styles.btnSubmit}>
               Lưu Giao Dịch Vào DB
             </button>
@@ -499,7 +456,7 @@ function Transactions() {
         {/* BLOCK 2: BẢNG LỊCH SỬ GIAO DỊCH THẬT */}
         <div style={{ ...styles.card, flex: 2 }}>
           <h4 style={styles.cardTitle}>
-            Lịch Sử Giao Dịch Thật ({transactions.length})
+            Lịch Sử Giao Dịch ({transactions.length})
           </h4>
           <table style={styles.table}>
             <thead>
@@ -516,7 +473,7 @@ function Transactions() {
               {transactions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="5"
+                    colSpan="6"
                     style={{
                       textAlign: "center",
                       padding: "20px",
@@ -578,88 +535,68 @@ function Transactions() {
             </tbody>
           </table>
         </div>
+
       </div>
 
-      {/* BLOCK 3: KHUNG CHATBOT TRỢ LÝ ẢO AI */}
-      <div style={styles.chatBotWrapper}>
-        <button
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          style={styles.chatButton}
-        >
-          {isChatOpen ? "✖" : "💬 Trợ lý AI"}
-        </button>
+      {/* BLOCK 3: CHATBOT AI */}
+      {/* 1. Nút tròn bấm để mở Chat nằm ở góc phải màn hình */}
+      <button 
+        onClick={() => setIsChatOpen(!isChatOpen)} 
+        style={styles.chatToggleButton}
+      >
+        {isChatOpen ? "✖ Đóng Chat" : "💬 Trợ Lý AI"}
+      </button>
 
-        {isChatOpen && (
-          <div style={styles.chatWindow}>
-            <div style={styles.chatHeader}>🤖 Trợ Lý Tài Chính AI</div>
-
-            {/* Vùng Body hiển thị danh sách tin nhắn động */}
-            <div
-              style={{
-                ...styles.chatBody,
-                overflowY: "auto",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-              }}
-            >
-              {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  style={{
-                    ...styles.msgAi, // Thừa hưởng css gốc của ní
-                    // Nếu là user thì tự động đẩy text sang bên phải và đổi màu nền (tùy chọn)
-                    alignSelf:
-                      msg.sender === "user" ? "flex-end" : "flex-start",
-                    backgroundColor:
-                      msg.sender === "user" ? "#7F56D9" : "#E4E7EC",
-                    color: msg.sender === "user" ? "#FFFFFF" : "#000000",
-                    whiteSpace: "pre-line", // Giúp hiển thị đúng các dấu xuống dòng khi Gemini trả về list
-                  }}
-                >
+      {/* 2. Khung chat hiển thị khi state isChatOpen === true */}
+      {isChatOpen && (
+        <div style={styles.chatWindow}>
+          <div style={styles.chatHeader}>
+            <strong>🤖 Cố vấn Tài chính AI</strong>
+          </div>
+          
+          {/* Vùng hiển thị danh sách tin nhắn */}
+          <div style={styles.chatBody}>
+            {messages.map((msg, index) => (
+              <div 
+                key={index} 
+                style={{
+                  ...styles.chatMessageRow,
+                  justifyContent: msg.sender === "user" ? "flex-end" : "flex-start"
+                }}
+              >
+                <div style={{
+                  ...styles.chatBubble,
+                  backgroundColor: msg.sender === "user" ? "#007fff" : "#f1f5f9",
+                  color: msg.sender === "user" ? "#fff" : "#1e293b",
+                }}>
                   {msg.text}
                 </div>
-              ))}
-
-              {/* Hiển thị dòng thông báo nhỏ khi đang đợi Gemini rep */}
-              {loading && (
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#888",
-                    fontStyle: "italic",
-                    paddingLeft: "5px",
-                  }}
-                >
-                  AI đang suy nghĩ...
-                </div>
-              )}
-            </div>
-
-            {/* Bọc input vào form để kích hoạt tính năng submit bằng phím Enter */}
-            <form onSubmit={handleSendMessage} style={styles.chatFooter}>
-              <input
-                type="text"
-                placeholder={
-                  loading ? "Đang đợi AI phản hồi..." : "Hỏi AI về chi tiêu..."
-                }
-                style={styles.chatInput}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)} // Bắt sự kiện gõ phím
-                disabled={loading} // Khóa input khi đang xử lý để tránh spam gửi
-              />
-              <button type="submit" style={styles.btnSend} disabled={loading}>
-                Gửi
-              </button>
-            </form>
+              </div>
+            ))}
+            {loading && <div style={{ color: "#64748b", fontSize: "13px", padding: "5px" }}>AI đang suy nghĩ...</div>}
           </div>
-        )}
-      </div>
+
+          {/* Form nhập liệu tin nhắn */}
+          <form onSubmit={handleSendMessage} style={styles.chatFooter}>
+            <input
+              type="text"
+              placeholder="Hỏi AI: Thêm chi tiêu 50k ăn sáng..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              disabled={loading}
+              style={styles.chatInput}
+            />
+            <button type="submit" disabled={loading} style={styles.chatSendBtn}>
+              Gửi
+            </button>
+          </form>
+        </div>
+      )}
+
     </div>
   );
 }
 
-// Giữ nguyên bộ styles cũ của ní ở dưới...
 const styles = {
   container: {
     width: "100%",
@@ -798,6 +735,85 @@ const styles = {
     color: "#fff",
     border: "none",
     borderRadius: "4px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+  chatToggleButton: {
+    position: "fixed",
+    bottom: "20px",
+    right: "20px",
+    padding: "12px 20px",
+    backgroundColor: "#007fff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "30px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    zIndex: 1000,
+  },
+  chatWindow: {
+    position: "fixed",
+    bottom: "80px",
+    right: "20px",
+    width: "350px",
+    height: "450px",
+    backgroundColor: "#fff",
+    borderRadius: "12px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    zIndex: 1000,
+    border: "1px solid #e2e8f0",
+  },
+  chatHeader: {
+    padding: "15px",
+    backgroundColor: "#f8fafc",
+    borderBottom: "1px solid #e2e8f0",
+    color: "#1e293b",
+  },
+  chatBody: {
+    flex: 1,
+    padding: "15px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  chatMessageRow: {
+    display: "flex",
+    width: "100%",
+  },
+  chatBubble: {
+    maxWidth: "75%",
+    padding: "10px 14px",
+    borderRadius: "16px",
+    fontSize: "14px",
+    lineHeight: "1.4",
+    whiteSpace: "pre-wrap",
+  },
+  chatFooter: {
+    display: "flex",
+    padding: "10px",
+    borderTop: "1px solid #e2e8f0",
+    backgroundColor: "#fff",
+  },
+  chatInput: {
+    flex: 1,
+    padding: "8px 12px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "6px",
+    outline: "none",
+    fontSize: "14px",
+  },
+  chatSendBtn: {
+    marginLeft: "8px",
+    padding: "8px 16px",
+    backgroundColor: "#007fff",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
     cursor: "pointer",
     fontWeight: "bold",
   },

@@ -35,7 +35,47 @@ router.post("/", authMiddleware, async (req, res) => {
     const user_id = req.user.id;
     const { amount, type, category_id, date, description, source_type } = req.body;
 
-    // 🌟 SỬA: Thêm cột source_type vào câu lệnh INSERT và truyền mảng tham số tương ứng (đúng số lượng ?)
+    // 1. Nếu là khoản CHI TIÊU (expense), tiến hành kiểm tra hạn mức ngân sách
+    if (type === "expense") {
+      // Truy vấn kiểm tra hạn mức (budget_limit) và số tiền đã xài trong tháng của danh mục này
+      const checkBudgetQuery = `
+        SELECT 
+          b.amount AS budget_limit,
+          c.name AS category_name,
+          COALESCE(SUM(t.amount), 0) AS total_spent
+        FROM budgets b
+        JOIN categories c ON b.category_id = c.id
+        LEFT JOIN transactions t ON t.category_id = b.category_id 
+          AND t.user_id = b.user_id 
+          AND t.type = 'expense'
+          AND MONTH(t.date) = MONTH(CURRENT_DATE())
+          AND YEAR(t.date) = YEAR(CURRENT_DATE())
+        WHERE b.user_id = ? AND b.category_id = ?
+        GROUP BY b.id, b.amount, c.name
+      `;
+
+      // 🌟 SỬA TẠI ĐÂY: Thực thi câu lệnh SQL để lấy dữ liệu hạn mức thực tế
+      const [budgets] = await db.query(checkBudgetQuery, [user_id, category_id]);
+
+      // Nếu danh mục này đã được cài đặt hạn mức
+      if (budgets.length > 0) {
+        const budget = budgets[0];
+        const limit = Number(budget.budget_limit);
+        const currentSpent = Number(budget.total_spent);
+        const newAmount = Number(amount);
+
+        // Nếu tổng tiền cũ + tiền mới vượt quá hạn mức -> Trả lỗi về ngay lập tức, không cho INSERT
+        if (currentSpent + newAmount > limit) {
+          return res.status(400).json({
+            success: false,
+            isOverBudget: true,
+            error: `Giao dịch thất bại! Danh mục "${budget.category_name}" đã chi ${currentSpent.toLocaleString("vi-VN")}đ/${limit.toLocaleString("vi-VN")}đ. Thêm ${newAmount.toLocaleString("vi-VN")}đ sẽ vượt quá hạn mức cho phép.`
+          });
+        }
+      }
+    }
+
+    // 2. VƯỢT QUA VÒNG GỬI XE -> Thực hiện thêm vào DB
     const [result] = await db.query(
       `
       INSERT INTO transactions (amount, type, category_id, date, description, user_id, source_type)
@@ -47,7 +87,8 @@ router.post("/", authMiddleware, async (req, res) => {
     res.json({
       success: true,
       id: result.insertId,
-      message: "Thêm giao dịch thành công"
+      message: "Thêm giao dịch thành công",
+      inserted: true
     });
   } catch (err) {
     console.error("🔴 LỖI POST TRANSACTION:", err);

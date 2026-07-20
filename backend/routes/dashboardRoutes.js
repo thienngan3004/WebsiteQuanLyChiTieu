@@ -73,7 +73,7 @@ router.get("/reports-data", authMiddleware, async (req, res) => {
 });
 
 router.get("/balance-503020", authMiddleware , async (req, res) => {
-    // Giả sử ông đang lấy userId từ middleware xác thực hoặc hardcode để test (ví dụ: userId = 3 dựa theo log lỗi)
+    // Giả sử lấy userId từ middleware xác thực hoặc hardcode để test
     const userId = req.user?.id || 3; 
   
     try {
@@ -121,7 +121,7 @@ router.get("/balance-503020", authMiddleware , async (req, res) => {
         ) {
           soThich += amount;
         } 
-        // Các danh mục phát sinh khác (ví dụ: quyên góp, học tập...) nếu ông muốn xếp vào nhóm hưởng thụ/khác
+        // Các danh mục phát sinh khác (ví dụ: quyên góp, học tập...)
         else {
           soThich += amount; 
         }

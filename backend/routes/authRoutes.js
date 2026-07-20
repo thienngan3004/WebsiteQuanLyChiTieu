@@ -4,7 +4,7 @@ const authController = require('../controllers/authController');
 const db = require('../config/db');
 const jwt = require('jsonwebtoken');
 
-// 🌟 Import thư viện bảo mật chính chủ của Google
+// Import thư viện bảo mật của Google
 const { OAuth2Client } = require('google-auth-library');
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -12,7 +12,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 
-// 🌟 XỬ LÝ ĐĂNG NHẬP / ĐĂNG KÝ BẰNG GOOGLE GMAIL (TÍCH XANH)
+// XỬ LÝ ĐĂNG NHẬP / ĐĂNG KÝ BẰNG GOOGLE GMAIL
 router.post('/google', async (req, res) => {
     const { token } = req.body;
 

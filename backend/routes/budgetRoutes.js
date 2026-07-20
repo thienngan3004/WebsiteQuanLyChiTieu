@@ -112,7 +112,7 @@ router.get("/check-warnings", authMiddleware, async (req, res) => {
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
 
-    // SQL: Chỉ lấy những danh mục được cấu hình trong bảng budgets, sau đó cộng dồn các giao dịch 'expense' tương ứng
+    // SQL: Đã đổi sang định dạng '%d-%m-%Y' để đọc chuỗi gạch ngang (VD: 18-07-2026)
     const query = `
       SELECT 
         b.id AS budget_id,
@@ -126,17 +126,17 @@ router.get("/check-warnings", authMiddleware, async (req, res) => {
       LEFT JOIN transactions t ON b.category_id = t.category_id 
         AND t.user_id = b.user_id 
         AND t.type = 'expense'
-        AND MONTH(t.date) = ? 
-        AND YEAR(t.date) = ?
+        AND MONTH(t.date) = MONTH(CURRENT_DATE())
+        AND YEAR(t.date) = YEAR(CURRENT_DATE())
       WHERE b.user_id = ? AND b.month = ? AND b.year = ?
       GROUP BY b.id, b.category_id, c.name, b.amount
     `;
 
     let rows;
     if (typeof db.execute === "function") {
-      [rows] = await db.execute(query, [currentMonth, currentYear, userId, currentMonth, currentYear]);
+      [rows] = await db.execute(query, [userId, currentMonth, currentYear]);
     } else {
-      [rows] = await db.query(query, [currentMonth, currentYear, userId, currentMonth, currentYear]);
+      [rows] = await db.query(query, [userId, currentMonth, currentYear]);
     }
 
     return res.status(200).json({ success: true, data: rows });

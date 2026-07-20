@@ -8,6 +8,26 @@ const axios = require("axios");
 // Base URL for Ollama API
 const OLLAMA_API_URL = "https://ollama.com/api";
 
+// 🛠️ HÀM TRỢ LÝ: CHUYỂN ĐỔI TEENCODE TIỀN TỆ THÀNH SỐ NGUYÊN
+function normalizeTeencodeMoney(message) {
+  if (!message) return "";
+  let text = message.toLowerCase();
+
+  // 1. Xử lý viết tắt triệu: 'm', 'mđ', 'tr', 'triệu' (Ví dụ: 1.5tr -> 1500000, 2m -> 2000000)
+  text = text.replace(/(\d+[\.,]?\d*)\s*(m|mđ|tr|triệu|trieu)\b/g, (match, p1) => {
+    const num = parseFloat(p1.replace(',', '.'));
+    return num * 1000000;
+  });
+
+  // 2. Xử lý viết tắt nghìn: 'k', 'kđ', 'nghìn', 'ngàn' (Ví dụ: 50k -> 50000, 100 nghìn -> 100000)
+  text = text.replace(/(\d+[\.,]?\d*)\s*(k|kđ|nghìn|nghìnđ|ngan|nganđ)\b/g, (match, p1) => {
+    const num = parseFloat(p1.replace(',', '.'));
+    return num * 1000;
+  });
+
+  return text;
+}
+
 // 1. Route Test kết nối (Giữ nguyên)
 router.get("/test-connection", async (req, res) => {
   const result = await testAIConnection();
@@ -59,7 +79,7 @@ router.get("/analysis/spending", authMiddleware, async (req, res) => {
 });
 
 /**
- * 🎯 3. ROUTE CHAT CHÍNH: PHÂN TÍCH Ý ĐỊNH TRA CỨU THEO THỜI GIAN & THÊM/SỬA/XÓA
+ * 🎯 3. ROUTE CHAT CHÍNH: NÂNG CẤP BỘ LỌC TEENCODE TIỀN TỆ
  */
 router.post("/", authMiddleware, async (req, res) => {
   const { message } = req.body;
@@ -68,9 +88,12 @@ router.post("/", authMiddleware, async (req, res) => {
   if (!message || typeof message !== "string" || !message.trim()) {
     return res.status(400).json({ error: "Vui lòng nhập nội dung tin nhắn hợp lệ." });
   }
-  const sanitizedMessage = message.trim().slice(0, 1000);
+  
+  const originalMessage = message.trim().slice(0, 1000);
+  
+  // 🌟 TIỀN XỬ LÝ: Chuyển đổi teencode thành số thật (Ví dụ: "ăn trưa 50k" -> "ăn trưa 50000")
+  const sanitizedMessage = normalizeTeencodeMoney(originalMessage);
 
-  // Lấy mốc thời gian thực tế hiện tại để AI làm căn cứ tính toán (ví dụ: "hôm nay", "tháng này")
   const today = new Date();
   const currentContextDate = `Hôm nay là thứ: ${today.getDay() === 0 ? "Chủ Nhật" : "Thứ " + (today.getDay() + 1)}, ngày ${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`;
 
@@ -82,49 +105,53 @@ router.post("/", authMiddleware, async (req, res) => {
 
     const realCategoriesText = userCategories.map(c => `- ${c.name} (${c.type === 'expense' ? 'Chi' : 'Thu'})`).join("\n");
     
-    // --- BƯỚC 1: PROMPT PHÂN TÍCH Ý ĐỊNH NÂNG CẤP BÓC TÁCH THỜI GIAN ---
+    // --- BƯỚC 1: PROMPT PHÂN TÍCH Ý ĐỊNH NÂNG CẤP DẠY AI HỌC THÊM QUY TẮC TEENCODE ---
     const classifyPrompt = `
     Bạn là một hệ thống phân tích ý định người dùng cho ứng dụng quản lý tài chính cá nhân.
     Dựa vào câu nói của người dùng và ngữ cảnh thời gian thực tế bên dưới, hãy trả về một chuỗi JSON duy nhất, tuyệt đối không giải thích gì thêm ngoài JSON.
     
-    DANH SÁCH DANH MỤC THỰC TẾ TRONG HỆ THỐNG (Hãy chọn category_name trùng khớp hoặc gần đúng nhất với danh sách này):
+    DANH SÁCH DANH MỤC THỰC TẾ TRONG HỆ THỐNG:
     ${realCategoriesText}
 
     Ngữ cảnh thời gian thực tế của hệ thống: ${currentContextDate}
-    Câu nói của người dùng: "${sanitizedMessage}"
+    Câu nói của người dùng (Đã được tiền xử lý số): "${sanitizedMessage}"
 
     Cấu trúc JSON bắt buộc phải trả về:
     {
       "action": "view" hoặc "add" hoặc "update" hoặc "delete" hoặc "chat",
       "data": {
-        "amount": số_tiền (dạng số, nếu có),
+        "amount": số_tiền (BẮT BUỘC ĐỂ DẠNG SỐ NGUYÊN NGUYÊN BẢN, ví dụ: 50000, 1000000. Không để text chữ hay ký tự k, m, tr),
         "type": "expense" hoặc "income" (nếu có),
         "source_type": "cash" hoặc "card" hoặc "e-wallet" (nếu có),
         "category_name": "tên danh mục" (ví dụ: Ăn uống, Di chuyển, Mua sắm..., nếu có),
         "description": "mô tả chi tiết hoặc mục đích" (nếu có),
         "transaction_id": id_giao_dịch (dạng số, nếu có),
-        "start_date": "YYYY-MM-DD" (chỉ điền khi hành động là "view" và user yêu cầu mốc thời gian cụ thể như hôm nay, tuần này, tháng này, tháng trước...),
-        "end_date": "YYYY-MM-DD" (chỉ điền tương tự start_date)
+        "start_date": "YYYY-MM-DD",
+        "end_date": "YYYY-MM-DD"
       }
     }
 
-    Quy tắc phân loại "action":
-    - "view": Người dùng muốn liệt kê, xem, kiểm tra, tra cứu danh sách lịch sử giao dịch (ví dụ: "cho xem chi tiêu hôm nay", "tháng này tiêu gì", "liệt kê khoản chi tuần qua").
-    - "add": Người dùng muốn ghi chép, thêm giao dịch mới (ví dụ: "vừa ăn phở 50k", "mới nhận lương 10 triệu").
-    - "update": Người dùng muốn sửa, cập nhật giao dịch (ví dụ: "sửa giao dịch id 5 thành 60k").
-    - "delete": Người dùng muốn xóa giao dịch (ví dụ: "xóa giao dịch số 12 giúp tớ").
-    - "chat": Các câu hỏi tư vấn tài chính chung chung, trò chuyện không tác động hay tra cứu database.
-    
-    Nếu hành động là "add" hoặc "update", hãy trích xuất thêm trường "source_type" vào trong object data. Quy định giá trị:
-    - Nếu user nói: thẻ, ngân hàng, card, chuyển khoản, atm -> trả về "card"
-    - Nếu user nói: tiền mặt, cash -> trả về "cash"
-    - Nếu user nói: ví, momo, zalopay, e-wallet -> trả về "e-wallet"
-    - Nếu không nhắc tới, mặc định trả về null hoặc "cash".
+    QUY TẮC ĐỌC TEENCODE TIỀN TỆ (Dành cho trường hợp chuỗi xử lý chưa hết):
+    - Các ký hiệu k, kđ, nghìn, ngàn, cành tương đương hàng nghìn (x1.000). Ví dụ: 10k, 10 nghìn, 10 cành = 10000
+    - Các ký hiệu m, mđ, tr, triệu, củ tương đương hàng triệu (x1.000.000). Ví dụ: 1m, 1.5tr, 1,5tr, 1 triệu, 1 củ = 1000000 hoặc 1500000
 
-    HƯỚNG DẪN ĐẶC BIỆT ĐỂ MAP "category_name" CHUẨN XÁC:
-    - Nếu câu nói có các từ khóa: xăng, tiền xăng, đổ xăng, xe cộ, sửa xe, grab, taxi, bus, đi lại -> BẮT BUỘC phải chọn category_name là "Di chuyển". Tuyệt đối KHÔNG ĐƯỢC chọn "Mua sắm".
-    - Nếu câu nói có các từ khóa: ăn, uống, trà sữa, cafe, cơm, phở, bún, liên hoan,... -> BẮT BUỘC chọn "Ăn uống".
-    - Nếu câu nói có các từ khóa: áo, quần, giày, dép, mua hộ, đồ dùng, thiết bị,... -> chọn "Mua sắm".
+    Quy tắc phân loại "action":
+    - "view": Người dùng muốn liệt kê, xem, kiểm tra, tra cứu lịch sử.
+    - "add": Người dùng muốn ghi chép, thêm giao dịch mới.
+    - "update": Người dùng muốn sửa, cập nhật giao dịch.
+    - "delete": Người dùng muốn xóa giao dịch.
+    - "chat": Các câu hỏi tư vấn tài chính chung chung.
+    
+    Nếu hành động là "add" hoặc "update", trích xuất thêm "source_type":
+    - Thẻ, ngân hàng, card, chuyển khoản, atm, banking -> "card"
+    - Tiền mặt, cash -> "cash"
+    - Ví, momo, zalopay, e-wallet -> "e-wallet"
+    - Mặc định nếu không nhắc tới: "cash".
+
+    HƯỚNG DẪN MAP "category_name":
+    - Xăng, đi lại, sửa xe, grab, taxi, bus -> "Di chuyển"
+    - Ăn, uống, trà sữa, cafe, cơm, phở, bún -> "Ăn uống"
+    - Áo, quần, giày, dép, mua hộ, đồ dùng -> "Mua sắm"
     `;
 
     const classifyResponse = await axios.post(`${OLLAMA_API_URL}/generate`, {
@@ -146,9 +173,7 @@ router.post("/", authMiddleware, async (req, res) => {
     // --- BƯỚC 2: XỬ LÝ DATABASE DỰA TRÊN Ý ĐỊNH ---
     let dbStatusContext = ""; 
 
-    // HÀNH ĐỘNG 1: TRA CỨU DANH SÁCH CHI TIẾT THEO THỜI GIAN (Yêu cầu chính của ông)
     if (intent.action === "view") {
-      // Đổi thành t.source_type để lấy đúng dữ liệu dưới DB
       let queryDetail = `
         SELECT t.id, t.amount, t.type, t.description, t.source_type,
                DATE_FORMAT(t.date, '%d/%m/%Y') as formatted_date, 
@@ -175,7 +200,6 @@ router.post("/", authMiddleware, async (req, res) => {
         dbStatusContext += "- Không tìm thấy giao dịch nào trong khoảng thời gian này.\n";
       } else {
         details.forEach(t => {
-          // Map giá trị tiếng Anh dưới DB sang tiếng Việt cho AI đọc dễ hiểu hơn nếu muốn
           let nguonTien = t.source_type || "Không rõ";
           if (nguonTien === 'cash') nguonTien = 'Tiền mặt';
           else if (nguonTien === 'card') nguonTien = 'Thẻ ngân hàng';
@@ -188,11 +212,8 @@ router.post("/", authMiddleware, async (req, res) => {
 
     else if (intent.action === "add") {
       const { amount, description, category_name, type } = intent.data;
-      
-      // Lấy source_type từ AI truyền xuống, nếu AI trả về null thì mới lấy mặc định là 'cash'
       const sourceType = intent.data.source_type || 'cash'; 
 
-      // Mặc định lấy category_id đầu tiên nếu không tìm thấy danh mục phù hợp
       let categoryId = 1; 
       if (category_name) {
         const [categories] = await db.query("SELECT id FROM categories WHERE name LIKE ? LIMIT 1", [`%${category_name}%`]);
@@ -201,27 +222,21 @@ router.post("/", authMiddleware, async (req, res) => {
         }
       }
 
-      // Đưa trường source_type vào câu lệnh INSERT câu SQL thực tế
       const [addRes] = await db.query(
         "INSERT INTO transactions (user_id, category_id, type, amount, date, description, source_type) VALUES (?, ?, ?, ?, NOW(), ?, ?)",
         [userId, categoryId, type || 'expense', amount, description || null, sourceType]
       );
 
       if (addRes.affectedRows > 0) {
-        dbStatusContext = `Hệ thống thông báo: Đã thêm THÀNH CÔNG giao dịch mới vào cơ sở dữ liệu với nguồn tiền là: ${sourceType === 'card' ? 'Thẻ ngân hàng' : sourceType === 'e-wallet' ? 'Ví điện tử' : 'Tiền mặt'}.`;
+        dbStatusContext = `Hệ thống thông báo: Đã thêm THÀNH CÔNG giao dịch mới với số tiền ${Number(amount).toLocaleString()} VND từ nguồn: ${sourceType === 'card' ? 'Thẻ ngân hàng' : sourceType === 'e-wallet' ? 'Ví điện tử' : 'Tiền mặt'}.`;
       } else {
         dbStatusContext = "Hệ thống thông báo: THẤT BẠI! Không thể thêm giao dịch vào database.";
       }
     }
     
-    // HÀNH ĐỘNG 3: XÓA GIAO DỊCH
-    // =========================================================
-    // 🔧 ĐOẠN CODE XÓA (DELETE) NÂNG CẤP: TỰ TÌM ID NẾU USER CHỈ GÕ VĂN BẢN
-    // =========================================================
     else if (intent.action === "delete") {
       let cleanTxId = intent.data.transaction_id ? parseInt(intent.data.transaction_id, 10) : null;
 
-      // Nếu AI không bóc được ID nhưng bóc được mô tả hoặc số tiền, ta đi tìm ID dưới DB trước
       if (!cleanTxId && (intent.data.description || intent.data.amount)) {
         let findQuery = "SELECT id FROM transactions WHERE user_id = ?";
         let findParams = [userId];
@@ -231,7 +246,7 @@ router.post("/", authMiddleware, async (req, res) => {
         
         const [found] = await db.query(findQuery, findParams);
         if (found.length > 0) {
-          cleanTxId = found[0].id; // Tìm thấy ID rồi!
+          cleanTxId = found[0].id;
         }
       }
 
@@ -243,19 +258,15 @@ router.post("/", authMiddleware, async (req, res) => {
           dbStatusContext = `Hệ thống thông báo: THẤT BẠI! Không tìm thấy giao dịch ID ${cleanTxId} để xóa.`;
         }
       } else {
-        dbStatusContext = `Hệ thống thông báo: THẤT BẠI! Không thể xác định được giao dịch nào cần xóa dựa trên thông tin người dùng cung cấp. Vui lòng yêu cầu họ cung cấp ID hoặc mô tả rõ ràng hơn.`;
+        dbStatusContext = `Hệ thống thông báo: THẤT BẠI! Không thể xác định được giao dịch nào cần xóa dựa trên thông tin người dùng cung cấp.`;
       }
     }
 
-    // =========================================================
-    // 🔧 ĐOẠN CODE SỬA (UPDATE) NÂNG CẤP: NGĂN AI CHAT ẢO TỰ BÁO THÀNH CÔNG
-    // =========================================================
     else if (intent.action === "update") {
       let cleanTxId = intent.data.transaction_id ? parseInt(intent.data.transaction_id, 10) : null;
       let fields = [];
       let params = [];
 
-      // Logic tìm ID tương tự nếu không có ID truyền vào
       if (!cleanTxId && intent.data.description) {
         const [found] = await db.query("SELECT id FROM transactions WHERE user_id = ? AND description LIKE ? LIMIT 1", [userId, `%${intent.data.description}%`]);
         if (found.length > 0) cleanTxId = found[0].id;
@@ -281,11 +292,11 @@ router.post("/", authMiddleware, async (req, res) => {
           dbStatusContext = `Hệ thống thông báo: THẤT BẠI! Lệnh sửa chạy nhưng không tìm thấy giao dịch khớp trong DB.`;
         }
       } else {
-        dbStatusContext = `Hệ thống thông báo: THẤT BẠI! Không tìm thấy giao dịch hợp lệ hoặc thiếu dữ liệu để cập nhật. Không được báo thành công với user!`;
+        dbStatusContext = `Hệ thống thông báo: THẤT BẠI! Không tìm thấy giao dịch hợp lệ hoặc thiếu dữ liệu để cập nhật.`;
       }
     }
 
-    // --- BƯỚC 3: PROMPT CUỐI CÙNG ÉP AI ĐỌC DỮ LIỆU THẬT ĐỂ TRẢ LỜI CHI TIẾT ---
+    // --- BƯỚC 3: PROMPT CUỐI CÙNG TRẢ LỜI NGƯỜI DÙNG ---
     const finalResponse = await axios.post(`${OLLAMA_API_URL}/generate`, {
       model: "minimax-m2.5",
       prompt: `Bạn là một Cố vấn Quản lý Tài chính Cá nhân Chuyên nghiệp. Hãy trả lời người dùng bằng tiếng Việt thật tự nhiên, thân thiện và rõ ràng.
@@ -295,11 +306,10 @@ router.post("/", authMiddleware, async (req, res) => {
       ${dbStatusContext}
       ===================================
 
-      Tin nhắn vừa rồi của người dùng: "${sanitizedMessage}"
+      Tin nhắn nguyên bản vừa rồi của người dùng: "${originalMessage}"
 
       Nhiệm vụ của bạn:
-      - Nếu người dùng yêu cầu xem/tra cứu danh sách, hãy liệt kê toàn bộ các giao dịch xuất hiện trong "Hệ thống dữ liệu" ở trên ra (Bao gồm rõ ràng: Ngày, Số tiền, Danh mục, và Mô tả/Mục đích cụ thể từng dòng) để họ dễ theo dõi.
-      - Nếu người dùng thực hiện Thêm/Sửa/Xóa, hãy dựa vào thông báo thành công từ hệ thống để phản hồi lại một cách vui vẻ, ngắn gọn.`,
+      - Phản hồi lại yêu cầu của họ dựa trên kết quả database bằng ngôn ngữ tự nhiên, gần gũi. Nếu họ dùng viết tắt (k, tr, m) thì khi bạn nhắc lại số tiền, hãy ghi đầy đủ số ra (Ví dụ: 50.000đ thay vì viết lại 50k) để tăng tính chuyên nghiệp.`,
       stream: false
     }, {
       headers: { Authorization: `Bearer ${process.env.OLLAMA_API_KEY}`, "Content-Type": "application/json" }
