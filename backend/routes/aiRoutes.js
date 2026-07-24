@@ -213,24 +213,69 @@ router.post("/", authMiddleware, async (req, res) => {
     else if (intent.action === "add") {
       const { amount, description, category_name, type } = intent.data;
       const sourceType = intent.data.source_type || 'cash'; 
+      const transactionType = type || 'expense';
 
+      // 1. Tìm category_id chuẩn từ tên danh mục AI dịch ra
       let categoryId = 1; 
+      let foundCategoryName = "Mặc định";
       if (category_name) {
-        const [categories] = await db.query("SELECT id FROM categories WHERE name LIKE ? LIMIT 1", [`%${category_name}%`]);
+        const [categories] = await db.query("SELECT id, name FROM categories WHERE (user_id = ? OR user_id IS NULL) AND name LIKE ? LIMIT 1", [userId, `%${category_name}%`]);
         if (categories.length > 0) {
           categoryId = categories[0].id;
+          foundCategoryName = categories[0].name;
         }
       }
 
-      const [addRes] = await db.query(
-        "INSERT INTO transactions (user_id, category_id, type, amount, date, description, source_type) VALUES (?, ?, ?, ?, NOW(), ?, ?)",
-        [userId, categoryId, type || 'expense', amount, description || null, sourceType]
-      );
+      const newAmount = Number(amount);
 
-      if (addRes.affectedRows > 0) {
-        dbStatusContext = `Hệ thống thông báo: Đã thêm THÀNH CÔNG giao dịch mới với số tiền ${Number(amount).toLocaleString()} VND từ nguồn: ${sourceType === 'card' ? 'Thẻ ngân hàng' : sourceType === 'e-wallet' ? 'Ví điện tử' : 'Tiền mặt'}.`;
-      } else {
-        dbStatusContext = "Hệ thống thông báo: THẤT BẠI! Không thể thêm giao dịch vào database.";
+      // 2. 🌟 TÍCH HỢP LOGIC KIỂM TRA HẠN MỨC NGÂN SÁCH (Giống hệt bên Form)
+      if (transactionType === "expense") {
+        const checkBudgetQuery = `
+          SELECT 
+            b.amount AS budget_limit,
+            c.name AS category_name,
+            COALESCE(SUM(t.amount), 0) AS total_spent
+          FROM budgets b
+          JOIN categories c ON b.category_id = c.id
+          LEFT JOIN transactions t ON t.category_id = b.category_id 
+            AND t.user_id = b.user_id 
+            AND t.type = 'expense'
+            AND MONTH(t.date) = MONTH(CURRENT_DATE())
+            AND YEAR(t.date) = YEAR(CURRENT_DATE())
+          WHERE b.user_id = ? AND b.category_id = ?
+          GROUP BY b.id, b.amount, c.name
+        `;
+
+        const [budgets] = await db.query(checkBudgetQuery, [userId, categoryId]);
+
+        if (budgets.length > 0) {
+          const budget = budgets[0];
+          const limit = Number(budget.budget_limit);
+          const currentSpent = Number(budget.total_spent);
+
+          // Nếu vượt quá hạn mức -> Từ chối thêm và báo lỗi cho AI phản hồi
+          if (currentSpent + newAmount > limit) {
+            dbStatusContext = `Hệ thống thông báo: TỪ CHỐI thêm giao dịch vì vượt quá hạn mức! Danh mục "${budget.category_name}" có hạn mức ${limit.toLocaleString("vi-VN")}đ, đã chi ${currentSpent.toLocaleString("vi-VN")}đ. Thêm ${newAmount.toLocaleString("vi-VN")}đ sẽ bị vượt mức. Hãy thông báo rõ điều này cho người dùng.`;
+            
+            // Bỏ qua bước INSERT và nhảy thẳng xuống bước trả lời của AI
+            // (Không lưu vào DB)
+            // Biến dbStatusContext sẽ mang thông điệp từ chối để AI đọc và nhả câu trả lời thân thiện
+          }
+        }
+      }
+
+      // Nếu chưa có đoạn nào gán từ chối vượt ngân sách ở trên, tiến hành INSERT bình thường
+      if (!dbStatusContext.includes("TỪ CHỐI")) {
+        const [addRes] = await db.query(
+          "INSERT INTO transactions (user_id, category_id, type, amount, date, description, source_type) VALUES (?, ?, ?, ?, NOW(), ?, ?)",
+          [userId, categoryId, transactionType, newAmount, description || null, sourceType]
+        );
+
+        if (addRes.affectedRows > 0) {
+          dbStatusContext = `Hệ thống thông báo: Đã thêm THÀNH CÔNG giao dịch mới vào danh mục "${foundCategoryName}" với số tiền ${newAmount.toLocaleString("vi-VN")} VND từ nguồn: ${sourceType === 'card' ? 'Thẻ ngân hàng' : sourceType === 'e-wallet' ? 'Ví điện tử' : 'Tiền mặt'}.`;
+        } else {
+          dbStatusContext = `Hệ thống thông báo: THẤT BẠI! Không thể thêm giao dịch vào database.`;
+        }
       }
     }
     
